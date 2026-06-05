@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 
-const STORAGE_KEY = 'coaching_sen_v2';
-const DRAFT_KEY   = 'coaching_sen_draft';
+const OLD_STORAGE_KEY = 'coaching_sen_v2';
+const DRAFT_KEY = 'coaching_sen_draft';
+const UID_KEY = 'coaching_sen_uid';
 
-// ── セッション定義 ─────────────────────────────────────────────────────
 const SESSIONS = [
   {
     id: 1,
@@ -136,20 +136,19 @@ const NEXT_PREVIEW = {
   },
 };
 
-// ── ユーティリティ ────────────────────────────────────────────────────
-const getTotalQ   = (cfg) => cfg.phases.reduce((a, p) => a + p.questions.length, 0);
+const getTotalQ = (cfg) => cfg.phases.reduce((a, p) => a + p.questions.length, 0);
 
 const getNextQ = (session, cfg) => {
   for (let pi = 0; pi < cfg.phases.length; pi++) {
-    const phase = cfg.phases[pi];
-    for (let qi = 0; qi < phase.questions.length; qi++) {
+    for (let qi = 0; qi < cfg.phases[pi].questions.length; qi++) {
       if (!session.answers[`${pi}-${qi}`]) {
         return {
-          phaseIdx: pi, qIdx: qi, phase,
-          question: phase.questions[qi],
+          phaseIdx: pi, qIdx: qi,
+          phase: cfg.phases[pi],
+          question: cfg.phases[pi].questions[qi],
           qNum: qi + 1,
-          phaseTotal: phase.questions.length,
-          isLast: pi === cfg.phases.length - 1 && qi === phase.questions.length - 1,
+          phaseTotal: cfg.phases[pi].questions.length,
+          isLast: pi === cfg.phases.length - 1 && qi === cfg.phases[pi].questions.length - 1,
         };
       }
     }
@@ -158,26 +157,24 @@ const getNextQ = (session, cfg) => {
 };
 
 const defaultSession = () => ({ status: 'not_started', answers: {}, summary: '', completedAt: null });
-const defaultData = (userName) => ({
-  userName,
-  activeSessionId: null, // 途中保存用：現在進行中のセッションID
+const defaultData = (name) => ({
+  userName: name,
+  activeSessionId: null,
   sessions: { 1: defaultSession(), 2: defaultSession(), 3: defaultSession() },
   integratedDoc: '',
 });
 
-// ── スタイル定数 ──────────────────────────────────────────────────────
 const C = {
   bg: '#0a0a0a', gold: '#c9a84c', text: '#f5f0e8',
   muted: '#888', dim: '#555', surface: '#111',
-  border: '#1e1e1e', border2: '#2a2a2a',
-  green: '#6b9b6b',
+  border: '#1e1e1e', border2: '#2a2a2a', green: '#6b9b6b',
   font: "'Noto Serif JP', Georgia, serif",
 };
 
 const goldBtn = (active, extra = {}) => ({
   padding: '15px 28px', border: 'none', borderRadius: '4px',
   cursor: active ? 'pointer' : 'not-allowed', fontSize: '13px',
-  letterSpacing: '0.12em', fontFamily: C.font, transition: 'opacity 0.2s',
+  letterSpacing: '0.12em', fontFamily: C.font,
   background: active ? C.gold : '#1a1a1a', color: active ? '#0a0a0a' : C.dim,
   opacity: active ? 1 : 0.5, ...extra,
 });
@@ -189,14 +186,13 @@ const ghostBtn = (extra = {}) => ({
   cursor: 'pointer', fontFamily: C.font, ...extra,
 });
 
-// ── マークダウン簡易レンダラー ─────────────────────────────────────────
 const renderMd = (text) => {
   if (!text) return null;
   return text.split('\n').map((line, i) => {
-    if (line.startsWith('# '))   return <h2 key={i} style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 24px', letterSpacing: '0.03em' }}>{line.slice(2)}</h2>;
+    if (line.startsWith('# '))   return <h2 key={i} style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 24px' }}>{line.slice(2)}</h2>;
     if (line.startsWith('## '))  return <h3 key={i} style={{ color: C.text, fontSize: '16px', fontWeight: '400', margin: '28px 0 14px', borderBottom: `1px solid ${C.border}`, paddingBottom: '8px' }}>{line.slice(3)}</h3>;
     if (line.startsWith('### ')) return <h4 key={i} style={{ color: C.gold, fontSize: '11px', letterSpacing: '0.2em', margin: '20px 0 10px', fontWeight: '400' }}>{line.slice(4)}</h4>;
-    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '14px', margin: '6px 0', lineHeight: '1.8', paddingLeft: '4px' }}>{line}</p>;
+    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '14px', margin: '6px 0', lineHeight: '1.8' }}>{line}</p>;
     if (line.startsWith('- '))   return <p key={i} style={{ color: '#bbb', fontSize: '14px', margin: '5px 0', lineHeight: '1.8', display: 'flex', gap: '8px' }}><span style={{ color: C.gold, flexShrink: 0 }}>·</span>{line.slice(2)}</p>;
     if (line.match(/^\*\*(.+?):\*\*\s*(.*)/)) {
       const [, label, rest] = line.match(/^\*\*(.+?):\*\*\s*(.*)/);
@@ -208,169 +204,171 @@ const renderMd = (text) => {
   });
 };
 
-// ── SSEストリーム読み取りヘルパー ────────────────────────────────────────
-const readStream = async (res, onChunk) => {
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let text = '';
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
-          text += parsed.delta.text;
-          onChunk(text);
-        }
-      } catch {}
-    }
-  }
-  return text;
+const callAPI = async (body) => {
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json.text || '';
 };
 
-// ── メインコンポーネント ───────────────────────────────────────────────
 export default function SelfAnalysisApp() {
-  const [view, setView]         = useState('landing');
-  const [data, setData]         = useState(null);
-  const [activeId, setActiveId] = useState(null);
+  const [view, setView]           = useState('landing');
+  const [data, setData]           = useState(null);
+  const [activeId, setActiveId]   = useState(null);
   const [nameInput, setNameInput] = useState('');
 
-  // セッション進行
   const [answer, setAnswer]           = useState('');
   const [followUp, setFollowUp]       = useState('');
-  const [isLoading, setIsLoading]     = useState(false);
   const [convHistory, setConvHistory] = useState([]);
+  const [isLoading, setIsLoading]     = useState(false);
 
-  // サマリー
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [currentSummary, setCurrentSummary] = useState('');
+  const [isSummarizing, setIsSummarizing]   = useState(false);
+  const [summaryText, setSummaryText]       = useState('');
+  const [summaryError, setSummaryError]     = useState('');
   const [summaryTab, setSummaryTab]         = useState(0);
 
-  // 最終ドキュメント
   const [isGenerating, setIsGenerating] = useState(false);
+  const [saveStatus, setSaveStatus]     = useState('');
+  const [resumeToast, setResumeToast]   = useState(false);
+  const saveTimer = useRef(null);
+  const dbSaveTimer = useRef(null);
+  const userIdRef = useRef(null);
 
-  // 途中保存UI用state
-  const [saveStatus, setSaveStatus]       = useState(''); // '' | 'saving' | 'saved'
-  const [resumeToast, setResumeToast]     = useState(false);
-  const saveTimerRef = useRef(null);
-
-  // ── LocalStorage：初回読み込み（自動再開） ──────────────────────────
+  // DB / LocalStorage 読み込み
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved);
-      setData(parsed);
-      if (!parsed.userName) return;
+    let uid = localStorage.getItem(UID_KEY);
+    if (!uid) { uid = crypto.randomUUID(); localStorage.setItem(UID_KEY, uid); }
+    userIdRef.current = uid;
 
-      const resumeId = parsed.activeSessionId;
-      if (resumeId && parsed.sessions[resumeId]?.status === 'in_progress') {
-        // 進行中セッションへ自動ジャンプ
-        setActiveId(resumeId);
+    const applyData = (parsed) => {
+      setData(parsed);
+      const rid = parsed.activeSessionId;
+      if (rid && parsed.sessions[rid]?.status === 'in_progress') {
+        setActiveId(rid);
         setView('session-active');
         setResumeToast(true);
         setTimeout(() => setResumeToast(false), 3500);
       } else {
         setView('session-select');
       }
-    } catch (e) {}
+    };
+
+    fetch(`/api/db/load?userId=${uid}`)
+      .then(r => r.json())
+      .then(({ sessionData }) => {
+        if (sessionData) {
+          applyData(sessionData);
+        } else {
+          try {
+            const raw = localStorage.getItem(OLD_STORAGE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            applyData(parsed);
+            fetch('/api/db/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: uid, userName: parsed.userName, sessionData: parsed }),
+            }).catch(() => {});
+            localStorage.removeItem(OLD_STORAGE_KEY);
+          } catch {}
+        }
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(OLD_STORAGE_KEY);
+          if (!raw) return;
+          const parsed = JSON.parse(raw);
+          applyData(parsed);
+        } catch {}
+      });
   }, []);
 
-  // ── LocalStorage：data変化時に保存 ────────────────────────────────
+  // DB 書き込み（デバウンス1秒）
   useEffect(() => {
-    if (data) {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
-    }
+    if (!data || !userIdRef.current) return;
+    if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current);
+    dbSaveTimer.current = setTimeout(() => {
+      fetch('/api/db/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: userIdRef.current, userName: data.userName, sessionData: data }),
+      }).catch(() => {});
+    }, 1000);
+    return () => { if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current); };
   }, [data]);
 
-  // ── 下書き自動保存（入力中テキスト、デバウンス800ms） ─────────────
+  // 下書き自動保存
   useEffect(() => {
-    if (view !== 'session-active' || !activeId) return;
-    if (!answer) {
+    if (view !== 'session-active' || !activeId || !answer) {
       setSaveStatus('');
       return;
     }
     setSaveStatus('saving');
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({ sessionId: activeId, text: answer }));
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus(''), 2500);
-      } catch (e) {}
+      } catch {}
     }, 800);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [answer, view, activeId]);
 
-  // ── 下書き復元（セッションに入った時） ────────────────────────────
+  // 下書き復元
   useEffect(() => {
     if (view !== 'session-active' || !activeId) return;
     try {
       const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-      if (draft?.sessionId === activeId && draft.text) {
-        setAnswer(draft.text);
-      }
-    } catch (e) {}
+      if (draft?.sessionId === activeId && draft.text) setAnswer(draft.text);
+    } catch {}
   }, [view, activeId]);
 
-  const patchSession = useCallback((id, updates) => {
-    setData(prev => ({
+  const saveData = (updater) => setData(prev => typeof updater === 'function' ? updater(prev) : { ...prev, ...updater });
+
+  const patchSession = (id, updates) => {
+    saveData(prev => ({
       ...prev,
       sessions: { ...prev.sessions, [id]: { ...prev.sessions[id], ...updates } },
     }));
-  }, []);
+  };
 
-  // activeSessionId をデータに書き込む
-  const setActiveSessionId = useCallback((id) => {
-    setData(prev => ({ ...prev, activeSessionId: id }));
-  }, []);
-
-  // セッション選択画面へ戻る（activeSessionId をクリア）
-  const goToSessionSelect = useCallback(() => {
-    setActiveSessionId(null);
-    setFollowUp('');
-    setConvHistory([]);
-    setAnswer('');
-    setSaveStatus('');
-    setView('session-select');
-  }, [setActiveSessionId]);
-
-  // ── ランディング ────────────────────────────────────────────────────
-  const handleStart = () => {
-    if (!nameInput.trim()) return;
-    setData(defaultData(nameInput.trim()));
+  const goToSessionSelect = () => {
+    saveData(prev => ({ ...prev, activeSessionId: null }));
+    setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus('');
     setView('session-select');
   };
 
-  // ── セッション選択 ──────────────────────────────────────────────────
+  // ── ランディング ──────────────────────────────────────────────────────
+  const handleStart = () => {
+    if (!nameInput.trim()) return;
+    const d = defaultData(nameInput.trim());
+    setData(d);
+    setView('session-select');
+  };
+
+  // ── セッション選択 ────────────────────────────────────────────────────
   const handleSelectSession = (id) => {
-    const session = data.sessions[id];
     setActiveId(id);
     setSummaryTab(0);
-
+    const session = data.sessions[id];
     if (session.status === 'completed') {
-      setCurrentSummary(session.summary);
+      setSummaryText(session.summary);
+      setSummaryError('');
       setView('session-summary');
       return;
     }
-
-    setAnswer(''); setFollowUp(''); setConvHistory([]); setCurrentSummary(''); setSaveStatus('');
-
+    setAnswer(''); setFollowUp(''); setConvHistory([]); setSummaryText(''); setSummaryError(''); setSaveStatus('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
-    setActiveSessionId(id); // 途中保存：アクティブセッションを記録
+    saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
   };
 
-  // ── 回答送信 ────────────────────────────────────────────────────────
+  // ── 回答送信 ──────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!answer.trim() || isLoading) return;
     const cfg = SESSIONS[activeId - 1];
@@ -383,28 +381,21 @@ export default function SelfAnalysisApp() {
     const newAnswers = { ...session.answers, [key]: saved };
     const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
 
-    // 回答を保存 + 下書きをクリア
     patchSession(activeId, { answers: newAnswers });
-    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 2000);
-
     setIsLoading(true);
     setAnswer('');
 
     let fu = '';
     try {
-      const res = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'followup',
-          question: current.question,
-          answer: saved,
-          conversationHistory: convHistory,
-        }),
+      fu = await callAPI({
+        type: 'followup',
+        question: current.question,
+        answer: saved,
+        conversationHistory: convHistory,
       });
-      fu = await readStream(res, () => {});
       if (fu && fu !== '十分です') {
         setFollowUp(fu);
         setConvHistory(prev => [
@@ -413,164 +404,140 @@ export default function SelfAnalysisApp() {
           { role: 'assistant', content: fu },
         ]);
       }
-    } catch (e) {}
+    } catch {}
 
     setIsLoading(false);
 
-    if (isLast && (!fu || fu === '十分です')) {
+    if (isLast) {
       setFollowUp('');
-      await completeSession(newAnswers);
+      await runCompleteSession(activeId, newAnswers, data);
     }
   };
 
-  // ── 次の質問へ ──────────────────────────────────────────────────────
+  // ── 次の質問へ ────────────────────────────────────────────────────────
   const handleNext = async () => {
     setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus('');
     const cfg = SESSIONS[activeId - 1];
     const answers = data.sessions[activeId].answers;
     if (Object.keys(answers).length >= getTotalQ(cfg)) {
-      await completeSession(answers);
+      await runCompleteSession(activeId, answers, data);
     }
   };
 
-  // ── セッション完了・カード生成 ──────────────────────────────────────
-  const [summaryError, setSummaryError] = useState(false);
-  const [pendingAnswers, setPendingAnswers] = useState(null);
+  // ── セッション完了・カード生成 ────────────────────────────────────────
+  const runCompleteSession = async (sessionId, answers, currentData) => {
+    saveData(prev => ({ ...prev, activeSessionId: null }));
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
 
-  const completeSession = async (answers) => {
-    setActiveSessionId(null);
-    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-    setSummaryError(false);
-    setPendingAnswers(answers);
+    setSummaryText('');
+    setSummaryError('');
     setIsSummarizing(true);
     setView('session-summary');
 
-    const cfg = SESSIONS[activeId - 1];
-    const allAnswers = cfg.phases.map((phase, pi) => ({
-      phase: phase.title,
-      qa: phase.questions.map((q, qi) => ({
-        question: q, answer: answers[`${pi}-${qi}`] || '未回答',
-      })),
-    }));
-
-    const previousSummaries = [];
-    for (let i = 1; i < activeId; i++) {
-      if (data.sessions[i].summary) {
-        previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: data.sessions[i].summary });
-      }
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
-
     try {
-      const res = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'summary', sessionNumber: activeId, userName: data.userName, allAnswers, previousSummaries }),
-        signal: controller.signal,
+      const cfg = SESSIONS[sessionId - 1];
+
+      const allAnswers = cfg.phases.map((phase, pi) => ({
+        phase: phase.title,
+        qa: phase.questions.map((q, qi) => ({
+          question: q,
+          answer: answers[`${pi}-${qi}`] || '未回答',
+        })),
+      }));
+
+      const previousSummaries = [];
+      for (let i = 1; i < sessionId; i++) {
+        if (currentData.sessions[i]?.summary) {
+          previousSummaries.push({
+            sessionNumber: i,
+            title: SESSIONS[i - 1].title,
+            summary: currentData.sessions[i].summary,
+          });
+        }
+      }
+
+      const summary = await callAPI({
+        type: 'summary',
+        sessionNumber: sessionId,
+        userName: currentData.userName,
+        allAnswers,
+        previousSummaries,
       });
-      clearTimeout(timeoutId);
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      const summary = await readStream(res, (partial) => setCurrentSummary(partial));
-      if (!summary) throw new Error('Empty response');
-      setCurrentSummary(summary);
-      setSummaryError(false);
-      setData(prev => ({
+
+      setSummaryText(summary);
+      saveData(prev => ({
         ...prev,
         activeSessionId: null,
         sessions: {
           ...prev.sessions,
-          [activeId]: { ...prev.sessions[activeId], status: 'completed', answers, summary, completedAt: new Date().toISOString() },
+          [sessionId]: {
+            ...prev.sessions[sessionId],
+            status: 'completed',
+            answers,
+            summary,
+            completedAt: new Date().toISOString(),
+          },
         },
       }));
-    } catch (e) {
-      clearTimeout(timeoutId);
-      setSummaryError(true);
-      setCurrentSummary('');
-      patchSession(activeId, { status: 'completed', answers, completedAt: new Date().toISOString() });
+    } catch (err) {
+      setSummaryError(err.message || 'エラーが発生しました');
+    } finally {
+      setIsSummarizing(false);
     }
-
-    setIsSummarizing(false);
   };
 
-  const retryCard = () => {
-    if (pendingAnswers) completeSession(pendingAnswers);
-  };
-
-  // ── 統合ドキュメント生成 ────────────────────────────────────────────
+  // ── 統合ドキュメント生成 ──────────────────────────────────────────────
   const handleGenerate = async () => {
     setIsGenerating(true);
     setView('final-document');
-
-    const allSessionData = SESSIONS.map((cfg, idx) => {
-      const id = idx + 1;
-      const s = data.sessions[id];
-      return {
-        sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary,
-        answers: cfg.phases.map((phase, pi) => ({
-          phase: phase.title,
-          qa: phase.questions.map((q, qi) => ({ question: q, answer: s.answers[`${pi}-${qi}`] || '未回答' })),
-        })),
-      };
-    });
-
     try {
-      const res = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'generate', userName: data.userName, allSessionData }),
+      const allSessionData = SESSIONS.map((cfg, idx) => {
+        const id = idx + 1;
+        const s = data.sessions[id];
+        return {
+          sessionNumber: id,
+          title: cfg.title,
+          cardName: cfg.cardName,
+          summary: s.summary,
+          answers: cfg.phases.map((phase, pi) => ({
+            phase: phase.title,
+            qa: phase.questions.map((q, qi) => ({ question: q, answer: s.answers[`${pi}-${qi}`] || '未回答' })),
+          })),
+        };
       });
-      const doc = await readStream(res, (partial) => setData(prev => ({ ...prev, integratedDoc: partial })));
-      setData(prev => ({ ...prev, integratedDoc: doc }));
-    } catch (e) {
-      setData(prev => ({ ...prev, integratedDoc: 'エラーが発生しました。もう一度お試しください。' }));
+      const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData });
+      saveData(prev => ({ ...prev, integratedDoc: doc }));
+    } catch (err) {
+      saveData(prev => ({ ...prev, integratedDoc: `エラー: ${err.message}` }));
+    } finally {
+      setIsGenerating(false);
     }
-
-    setIsGenerating(false);
   };
 
-  const allDone = data && [1, 2, 3].every(i => data.sessions[i].status === 'completed');
-
-  // ── エクスポートユーティリティ ─────────────────────────────────────
+  // ── エクスポート ──────────────────────────────────────────────────────
   const downloadText = (filename, content) => {
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' })),
+      download: filename,
+    });
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
-  const buildSessionText = (sessionId) => {
-    const cfg = SESSIONS[sessionId - 1];
-    const session = data.sessions[sessionId];
-    const date = session.completedAt
-      ? new Date(session.completedAt).toLocaleDateString('ja-JP')
-      : new Date().toLocaleDateString('ja-JP');
+  const buildSessionText = (sid) => {
+    const cfg = SESSIONS[sid - 1];
+    const session = data.sessions[sid];
+    const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
-
-    let t = `${bar}\n`;
-    t += `コーチングSEN 自己分析プログラム\n`;
-    t += `SESSION ${sessionId}「${cfg.title}」\n`;
-    t += `${data.userName}  /  ${date}\n`;
-    t += `${bar}\n\n`;
-    t += `■ 回答データ\n\n`;
-
+    let t = `${bar}\nコーチングSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
     cfg.phases.forEach((phase, pi) => {
       t += `▶ ${phase.title}\n\n`;
       phase.questions.forEach((q, qi) => {
-        const ans = session.answers[`${pi}-${qi}`] || '（未回答）';
-        t += `Q: ${q}\nA: ${ans}\n\n`;
+        t += `Q: ${q}\nA: ${session.answers[`${pi}-${qi}`] || '（未回答）'}\n\n`;
       });
     });
-
-    t += `\n${bar}\n`;
-    t += `■ ${cfg.cardName}\n`;
-    t += `${bar}\n\n`;
+    t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     return t;
   };
@@ -578,10 +545,7 @@ export default function SelfAnalysisApp() {
   const buildFinalText = () => {
     const bar = '━'.repeat(48);
     const date = new Date().toLocaleDateString('ja-JP');
-    let t = `${bar}\n`;
-    t += `コーチングSEN 自己分析プログラム\n`;
-    t += `${data.userName} 分身ドキュメント  /  ${date}\n`;
-    t += `${bar}\n\n`;
+    let t = `${bar}\nコーチングSEN 自己分析プログラム\n${data.userName} 分身ドキュメント  /  ${date}\n${bar}\n\n`;
     t += (data.integratedDoc || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     t += `\n\n\n${bar}\n■ 全セッション回答データ\n${bar}\n\n`;
     SESSIONS.forEach((cfg, idx) => {
@@ -591,8 +555,7 @@ export default function SelfAnalysisApp() {
       cfg.phases.forEach((phase, pi) => {
         t += `▶ ${phase.title}\n\n`;
         phase.questions.forEach((q, qi) => {
-          const ans = session.answers[`${pi}-${qi}`] || '（未回答）';
-          t += `Q: ${q}\nA: ${ans}\n\n`;
+          t += `Q: ${q}\nA: ${session.answers[`${pi}-${qi}`] || '（未回答）'}\n\n`;
         });
       });
       t += '\n';
@@ -600,16 +563,16 @@ export default function SelfAnalysisApp() {
     return t;
   };
 
-  const exportFilename = (sessionId) => {
-    const date = (data.sessions[sessionId]?.completedAt
-      ? new Date(data.sessions[sessionId].completedAt)
-      : new Date()
-    ).toISOString().slice(0, 10).replace(/-/g, '');
-    return `${data.userName}_SESSION${sessionId}_${date}.txt`;
+  const exportFilename = (sid) => {
+    const date = (data.sessions[sid]?.completedAt ? new Date(data.sessions[sid].completedAt) : new Date())
+      .toISOString().slice(0, 10).replace(/-/g, '');
+    return `${data.userName}_SESSION${sid}_${date}.txt`;
   };
 
+  const allDone = data && [1, 2, 3].every(i => data.sessions[i].status === 'completed');
+
   // ────────────────────────────────────────────────────────────────────
-  // VIEW: LANDING
+  // LANDING
   // ────────────────────────────────────────────────────────────────────
   if (view === 'landing') {
     return (
@@ -626,9 +589,8 @@ export default function SelfAnalysisApp() {
               セッションで、あなたの思考、判断、価値観などを<br />
               深層まで深掘り、言語化するためのプログラム
             </p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '40px', textAlign: 'left' }}>
-              {SESSIONS.map((s) => (
+              {SESSIONS.map(s => (
                 <div key={s.id} style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', padding: '14px 18px', background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '6px' }}>
                   <span style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.15em', whiteSpace: 'nowrap', paddingTop: '2px' }}>SESSION {s.id}</span>
                   <div>
@@ -638,7 +600,6 @@ export default function SelfAnalysisApp() {
                 </div>
               ))}
             </div>
-
             <input
               type="text" placeholder="あなたの名前を入力してください"
               value={nameInput} onChange={e => setNameInput(e.target.value)}
@@ -648,9 +609,7 @@ export default function SelfAnalysisApp() {
             <button onClick={handleStart} style={goldBtn(!!nameInput.trim(), { width: '100%', padding: '16px', fontSize: '14px' })}>
               開始する
             </button>
-            <p style={{ color: '#2a2a2a', fontSize: '11px', marginTop: '20px', letterSpacing: '0.08em' }}>
-              各セッション 約90分 · 全3回
-            </p>
+            <p style={{ color: '#2a2a2a', fontSize: '11px', marginTop: '20px' }}>各セッション 約90分 · 全3回</p>
           </div>
         </div>
       </>
@@ -658,15 +617,14 @@ export default function SelfAnalysisApp() {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // VIEW: SESSION SELECT
+  // SESSION SELECT
   // ────────────────────────────────────────────────────────────────────
   if (view === 'session-select') {
     const statusInfo = (s) => {
-      if (s.status === 'completed')  return { label: '完了',   color: C.gold };
+      if (s.status === 'completed')   return { label: '完了',   color: C.gold };
       if (s.status === 'in_progress') return { label: '進行中', color: C.green };
       return { label: '未開始', color: C.dim };
     };
-
     return (
       <>
         <Head><title>セッション選択 — コーチングSEN</title></Head>
@@ -675,33 +633,18 @@ export default function SelfAnalysisApp() {
             <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>COACHING SEN</p>
             <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', marginBottom: '4px' }}>{data.userName}</h2>
             <p style={{ color: C.dim, fontSize: '12px', marginBottom: '40px' }}>セッションを選択してください</p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {SESSIONS.map((cfg) => {
+              {SESSIONS.map(cfg => {
                 const id = cfg.id;
                 const session = data.sessions[id];
-                const prevDone = id === 1 || data.sessions[id - 1].status === 'completed';
-                const locked = !prevDone;
+                const locked = id !== 1 && data.sessions[id - 1].status !== 'completed';
                 const info = statusInfo(session);
                 const totalQ = getTotalQ(cfg);
                 const answeredQ = Object.keys(session.answers).length;
                 const progress = Math.round(answeredQ / totalQ * 100);
-
                 return (
-                  <div
-                    key={id}
-                    onClick={() => !locked && handleSelectSession(id)}
-                    style={{
-                      padding: '22px 24px',
-                      border: `1px solid ${session.status === 'completed' ? '#2a2a2a' : C.border}`,
-                      borderRadius: '8px', cursor: locked ? 'not-allowed' : 'pointer',
-                      background: session.status === 'completed' ? '#0c0c0c' : C.surface,
-                      opacity: locked ? 0.35 : 1, position: 'relative', overflow: 'hidden',
-                    }}
-                  >
-                    {session.status === 'completed' && (
-                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${C.gold}, transparent)` }} />
-                    )}
+                  <div key={id} onClick={() => !locked && handleSelectSession(id)} style={{ padding: '22px 24px', border: `1px solid ${session.status === 'completed' ? '#2a2a2a' : C.border}`, borderRadius: '8px', cursor: locked ? 'not-allowed' : 'pointer', background: session.status === 'completed' ? '#0c0c0c' : C.surface, opacity: locked ? 0.35 : 1, position: 'relative', overflow: 'hidden' }}>
+                    {session.status === 'completed' && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${C.gold}, transparent)` }} />}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: session.status === 'in_progress' ? '14px' : 0 }}>
                       <div>
                         <span style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em' }}>SESSION {id}</span>
@@ -710,9 +653,7 @@ export default function SelfAnalysisApp() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '12px' }}>
                         <span style={{ color: info.color, fontSize: '11px' }}>{info.label}</span>
-                        {session.status === 'in_progress' && (
-                          <p style={{ color: C.dim, fontSize: '11px', margin: '3px 0 0' }}>{answeredQ}/{totalQ}問</p>
-                        )}
+                        {session.status === 'in_progress' && <p style={{ color: C.dim, fontSize: '11px', margin: '3px 0 0' }}>{answeredQ}/{totalQ}問</p>}
                       </div>
                     </div>
                     {session.status === 'in_progress' && (
@@ -724,27 +665,17 @@ export default function SelfAnalysisApp() {
                 );
               })}
             </div>
-
             {allDone && (
               <div style={{ marginTop: '32px', padding: '24px', border: `1px solid ${C.gold}33`, borderRadius: '8px', background: '#0c0c0c', textAlign: 'center' }}>
-                <p style={{ color: C.muted, fontSize: '12px', marginBottom: '16px', lineHeight: '1.8' }}>
-                  全3回のセッションが完了しました。<br />3枚のカードを統合した「分身ドキュメント」を生成します。
-                </p>
-                {data.integratedDoc ? (
-                  <button onClick={() => setView('final-document')} style={goldBtn(true, { width: '100%', padding: '15px' })}>分身ドキュメントを見る</button>
-                ) : (
-                  <button onClick={handleGenerate} style={goldBtn(true, { width: '100%', padding: '15px' })}>統合ドキュメントを生成する</button>
-                )}
+                <p style={{ color: C.muted, fontSize: '12px', marginBottom: '16px', lineHeight: '1.8' }}>全3回のセッションが完了しました。<br />3枚のカードを統合した「分身ドキュメント」を生成します。</p>
+                {data.integratedDoc
+                  ? <button onClick={() => setView('final-document')} style={goldBtn(true, { width: '100%', padding: '15px' })}>分身ドキュメントを見る</button>
+                  : <button onClick={handleGenerate} style={goldBtn(true, { width: '100%', padding: '15px' })}>統合ドキュメントを生成する</button>
+                }
               </div>
             )}
-
             <div style={{ marginTop: '28px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => { if (window.confirm('データをリセットしますか？')) { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(DRAFT_KEY); setData(null); setView('landing'); } }}
-                style={ghostBtn({ fontSize: '11px', color: '#333', borderColor: '#1a1a1a', padding: '8px 14px' })}
-              >
-                リセット
-              </button>
+              <button onClick={() => { if (window.confirm('データをリセットしますか？')) { localStorage.removeItem(UID_KEY); localStorage.removeItem(DRAFT_KEY); userIdRef.current = null; setData(null); setView('landing'); } }} style={ghostBtn({ fontSize: '11px', color: '#333', borderColor: '#1a1a1a', padding: '8px 14px' })}>リセット</button>
             </div>
           </div>
         </div>
@@ -753,62 +684,32 @@ export default function SelfAnalysisApp() {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // VIEW: SESSION ACTIVE
+  // SESSION ACTIVE
   // ────────────────────────────────────────────────────────────────────
   if (view === 'session-active') {
-    const cfg     = SESSIONS[activeId - 1];
+    const cfg = SESSIONS[activeId - 1];
     const session = data.sessions[activeId];
     const current = getNextQ(session, cfg);
-    const totalQ   = getTotalQ(cfg);
+    const totalQ = getTotalQ(cfg);
     const answeredQ = Object.keys(session.answers).length;
-    const progress  = Math.round(answeredQ / totalQ * 100);
-
-    if (!current) {
-      return (
-        <>
-          <Head><title>SESSION {activeId} — {cfg.title}</title></Head>
-          <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font }}>
-            <div style={{ textAlign: 'center' }}>
-              <span style={{ color: C.gold }}>·</span>
-              <p style={{ color: C.dim, fontSize: '13px', letterSpacing: '0.1em', marginTop: '12px' }}>カードを生成しています...</p>
-            </div>
-          </div>
-        </>
-      );
-    }
+    const progress = Math.round(answeredQ / totalQ * 100);
 
     return (
       <>
         <Head><title>SESSION {activeId} — {cfg.title}</title></Head>
-
-        {/* 再開トースト */}
         {resumeToast && (
-          <div style={{
-            position: 'fixed', top: '16px', right: '16px', zIndex: 200,
-            background: '#0f1f0f', border: `1px solid ${C.green}`,
-            borderRadius: '6px', padding: '10px 18px',
-            color: C.green, fontSize: '12px', letterSpacing: '0.05em',
-            display: 'flex', alignItems: 'center', gap: '8px',
-          }}>
+          <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 200, background: '#0f1f0f', border: `1px solid ${C.green}`, borderRadius: '6px', padding: '10px 18px', color: C.green, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>●</span> 前回の続きから再開しました
           </div>
         )}
-
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '32px 20px 80px' }}>
           <div style={{ maxWidth: '580px', margin: '0 auto' }}>
-
-            {/* プログレスバー */}
             <div style={{ marginBottom: '40px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em' }}>SESSION {activeId} · {cfg.title}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  {/* 保存状態インジケーター */}
-                  {saveStatus === 'saving' && (
-                    <span style={{ color: '#444', fontSize: '10px', letterSpacing: '0.05em' }}>保存中...</span>
-                  )}
-                  {saveStatus === 'saved' && (
-                    <span style={{ color: C.green, fontSize: '10px', letterSpacing: '0.05em' }}>✓ 保存済み</span>
-                  )}
+                  {saveStatus === 'saving' && <span style={{ color: '#444', fontSize: '10px' }}>保存中...</span>}
+                  {saveStatus === 'saved'  && <span style={{ color: C.green, fontSize: '10px' }}>✓ 保存済み</span>}
                   <span style={{ color: C.dim, fontSize: '11px' }}>{progress}%</span>
                 </div>
               </div>
@@ -817,57 +718,46 @@ export default function SelfAnalysisApp() {
               </div>
             </div>
 
-            {/* フェーズ */}
-            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
-
-            {/* 質問 */}
-            <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
-              <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>
-                Q{current.qNum} / {current.phaseTotal}
-              </p>
-              <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>
-                {current.question}
-              </p>
-            </div>
-
-            {/* AIの深掘り */}
-            {followUp && (
-              <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
-                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>深掘り</p>
-                <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
+            {current ? (
+              <>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
+                <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
+                  <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
+                  <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
+                </div>
+                {followUp && (
+                  <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
+                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>深掘り</p>
+                    <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
+                  </div>
+                )}
+                <textarea
+                  value={answer} onChange={e => setAnswer(e.target.value)}
+                  placeholder={followUp ? '続けて答えてください...' : '正直に、思ったままを書いてください...'}
+                  rows={followUp ? 4 : 6}
+                  style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '14px' }}
+                />
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleSubmit} disabled={!answer.trim() || isLoading} style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}>
+                    {isLoading ? '分析中...' : '回答する'}
+                  </button>
+                  {followUp && <button onClick={handleNext} style={ghostBtn({ padding: '15px 20px' })}>次へ</button>}
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: '40px 0' }}>
+                {isSummarizing ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}>
+                    <span style={{ color: C.gold }}>·</span>
+                    <span style={{ fontSize: '13px' }}>カードを生成しています...</span>
+                  </div>
+                ) : (
+                  <button onClick={handleNext} style={goldBtn(true)}>カードを生成する</button>
+                )}
               </div>
             )}
 
-            {/* 回答欄 */}
-            <textarea
-              value={answer}
-              onChange={e => setAnswer(e.target.value)}
-              placeholder={followUp ? '続けて答えてください...' : '正直に、思ったままを書いてください...'}
-              rows={followUp ? 4 : 6}
-              style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '14px' }}
-            />
-
-            {/* 自動保存の説明（初回のみわかりやすく） */}
-            {!followUp && answeredQ === 0 && (
-              <p style={{ color: '#333', fontSize: '10px', textAlign: 'right', marginBottom: '8px', letterSpacing: '0.05em' }}>
-                入力内容は自動保存されます
-              </p>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleSubmit}
-                disabled={!answer.trim() || isLoading}
-                style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}
-              >
-                {isLoading ? '分析中...' : '回答する'}
-              </button>
-              {followUp && (
-                <button onClick={handleNext} style={ghostBtn({ padding: '15px 20px' })}>次へ</button>
-              )}
-            </div>
-
-            <button onClick={goToSessionSelect} style={ghostBtn({ width: '100%', marginTop: '12px', fontSize: '11px' })}>
+            <button onClick={goToSessionSelect} style={ghostBtn({ width: '100%', marginTop: '16px', fontSize: '11px' })}>
               ← セッション選択に戻る（進捗は保存済み）
             </button>
           </div>
@@ -877,19 +767,16 @@ export default function SelfAnalysisApp() {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // VIEW: SESSION SUMMARY
+  // SESSION SUMMARY
   // ────────────────────────────────────────────────────────────────────
   if (view === 'session-summary') {
     const cfg = SESSIONS[activeId - 1];
     const nextPreview = NEXT_PREVIEW[activeId + 1];
     const completedPrev = [1, 2, 3].filter(i => i < activeId && data.sessions[i].status === 'completed');
+    const cardContent = summaryText || data.sessions[activeId]?.summary || '';
     const tabs = [
-      { label: `今日の発見 — ${cfg.cardName}`, content: currentSummary || data.sessions[activeId]?.summary || '', sessionId: activeId },
-      ...completedPrev.map(i => ({
-        label: `SESSION ${i} — ${SESSIONS[i - 1].cardName}`,
-        content: data.sessions[i].summary,
-        sessionId: i,
-      })),
+      { label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId },
+      ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i - 1].cardName}`, content: data.sessions[i].summary, sessionId: i })),
     ];
 
     return (
@@ -897,7 +784,6 @@ export default function SelfAnalysisApp() {
         <Head><title>SESSION {activeId} 完了 — コーチングSEN</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '44px 20px 80px' }}>
           <div style={{ maxWidth: '660px', margin: '0 auto' }}>
-
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
               <div style={{ width: '32px', height: '1px', background: C.gold }} />
               <span style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em' }}>
@@ -907,7 +793,7 @@ export default function SelfAnalysisApp() {
             <h2 style={{ color: C.text, fontSize: '21px', fontWeight: '300', marginBottom: '6px' }}>{cfg.title}</h2>
             <p style={{ color: C.dim, fontSize: '12px', marginBottom: '32px' }}>{cfg.cardName}</p>
 
-            {tabs.length > 1 && (
+            {tabs.length > 1 && !isSummarizing && (
               <div style={{ display: 'flex', marginBottom: '20px', borderBottom: `1px solid ${C.border}` }}>
                 {tabs.map((t, i) => (
                   <button key={i} onClick={() => setSummaryTab(i)} style={{ padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: C.font, fontSize: '10px', letterSpacing: '0.1em', color: summaryTab === i ? C.gold : C.dim, borderBottom: summaryTab === i ? `2px solid ${C.gold}` : '2px solid transparent', marginBottom: '-1px', whiteSpace: 'nowrap' }}>
@@ -918,44 +804,33 @@ export default function SelfAnalysisApp() {
             )}
 
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '32px 36px', minHeight: '240px', marginBottom: '24px' }}>
-              {isSummarizing && summaryTab === 0 ? (
+              {isSummarizing ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '20px 0' }}>
                   <span style={{ color: C.gold }}>·</span>
-                  <span style={{ fontSize: '13px' }}>カードを生成しています...</span>
+                  <span style={{ fontSize: '13px' }}>カードを生成しています... しばらくお待ちください</span>
                 </div>
-              ) : summaryError && summaryTab === 0 ? (
+              ) : summaryError ? (
                 <div style={{ padding: '20px 0' }}>
-                  <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '16px' }}>カードの生成に失敗しました。もう一度お試しください。</p>
-                  <button onClick={retryCard} style={goldBtn(true)}>再生成する</button>
+                  <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '8px' }}>生成に失敗しました</p>
+                  <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>{summaryError}</p>
+                  <button onClick={() => runCompleteSession(activeId, data.sessions[activeId].answers, data)} style={goldBtn(true)}>再試行する</button>
                 </div>
               ) : (
                 renderMd(tabs[summaryTab]?.content || '')
               )}
             </div>
 
-            {!isSummarizing && (
+            {!isSummarizing && !summaryError && (
               <div style={{ display: 'flex', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
                 <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>
-                {allDone && !data.integratedDoc && (
-                  <button onClick={handleGenerate} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>統合ドキュメントを生成する</button>
-                )}
-                {allDone && data.integratedDoc && (
-                  <button onClick={() => setView('final-document')} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>分身ドキュメントを見る</button>
-                )}
+                {allDone && !data.integratedDoc && <button onClick={handleGenerate} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>統合ドキュメントを生成する</button>}
+                {allDone && data.integratedDoc  && <button onClick={() => setView('final-document')} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>分身ドキュメントを見る</button>}
                 <button onClick={() => navigator.clipboard?.writeText(tabs[summaryTab]?.content || '')} style={ghostBtn()}>コピー</button>
-                <button
-                  onClick={() => {
-                    const sid = tabs[summaryTab]?.sessionId;
-                    if (sid) downloadText(exportFilename(sid), buildSessionText(sid));
-                  }}
-                  style={ghostBtn()}
-                >
-                  ダウンロード
-                </button>
+                <button onClick={() => { const sid = tabs[summaryTab]?.sessionId; if (sid) downloadText(exportFilename(sid), buildSessionText(sid)); }} style={ghostBtn()}>ダウンロード</button>
               </div>
             )}
 
-            {!isSummarizing && nextPreview && (
+            {!isSummarizing && !summaryError && nextPreview && (
               <div style={{ padding: '24px', border: `1px solid ${C.border2}`, borderRadius: '8px', background: '#0c0c0c' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                   <div style={{ width: '20px', height: '1px', background: C.gold }} />
@@ -972,7 +847,7 @@ export default function SelfAnalysisApp() {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // VIEW: FINAL DOCUMENT
+  // FINAL DOCUMENT
   // ────────────────────────────────────────────────────────────────────
   if (view === 'final-document') {
     const doc = data?.integratedDoc || '';
@@ -999,12 +874,7 @@ export default function SelfAnalysisApp() {
                 </div>
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button onClick={() => navigator.clipboard?.writeText(doc)} style={goldBtn(true)}>コピーする</button>
-                  <button
-                    onClick={() => downloadText(`${data.userName}_分身ドキュメント_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.txt`, buildFinalText())}
-                    style={ghostBtn()}
-                  >
-                    ダウンロード
-                  </button>
+                  <button onClick={() => downloadText(`${data.userName}_分身ドキュメント_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.txt`, buildFinalText())} style={ghostBtn()}>ダウンロード</button>
                   <button onClick={goToSessionSelect} style={ghostBtn()}>← セッション選択へ</button>
                 </div>
               </>
