@@ -1,30 +1,15 @@
+export const config = { runtime: 'edge' };
+
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 
-const callClaude = async (system, messages, maxTokens) => {
-  const res = await fetch(ANTHROPIC_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'API error');
-  return data.content[0]?.text || '';
-};
+function buildRequest(body) {
+  const { type } = body;
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const { type } = req.body;
-
-  try {
-    // ── 深掘り追加質問 ────────────────────────────────────────────────
-    if (type === 'followup') {
-      const { question, answer, conversationHistory = [] } = req.body;
-      const system = `あなたはプロのコーチです。自己分析ヒアリングを行っています。
+  if (type === 'followup') {
+    const { question, answer, conversationHistory = [] } = body;
+    return {
+      system: `あなたはプロのコーチです。自己分析ヒアリングを行っています。
 相手の答えを聞いて、深層まで掘り下げる追加質問を1つだけしてください。
 
 ルール：
@@ -34,22 +19,21 @@ export default async function handler(req, res) {
 - 感情が動いている部分を深掘りする
 - 質問は短く1文で
 - 日本語で答える
-- 答えが既に十分に深い場合は「十分です」とだけ答える`;
-      const messages = [
+- 答えが既に十分に深い場合は「十分です」とだけ答える`,
+      messages: [
         ...conversationHistory,
         { role: 'user', content: `質問：${question}\n回答：${answer}` },
-      ];
-      const text = await callClaude(system, messages, 300);
-      return res.json({ text });
-    }
+      ],
+      max_tokens: 300,
+    };
+  }
 
-    // ── セッションカード生成 ──────────────────────────────────────────
-    if (type === 'summary') {
-      const { sessionNumber, userName, allAnswers, previousSummaries = [] } = req.body;
-      let system = '';
+  if (type === 'summary') {
+    const { sessionNumber, userName, allAnswers, previousSummaries = [] } = body;
+    let system = '';
 
-      if (sessionNumber === 1) {
-        system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の動機の核心カード」を作成してください。
+    if (sessionNumber === 1) {
+      system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の動機の核心カード」を作成してください。
 
 出力形式（マークダウン）：
 
@@ -76,11 +60,11 @@ export default async function handler(req, res) {
 
 ---
 褒めず、正確に。弱点も全て含める。日本語で。`;
-      }
+    }
 
-      if (sessionNumber === 2) {
-        const s1 = previousSummaries.find(s => s.sessionNumber === 1);
-        system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の成功条件・失敗条件カード」を作成してください。
+    if (sessionNumber === 2) {
+      const s1 = previousSummaries.find(s => s.sessionNumber === 1);
+      system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の成功条件・失敗条件カード」を作成してください。
 ${s1 ? `\n【前回セッション1「動機の核心カード」より参照】\n${s1.summary}\n` : ''}
 出力形式（マークダウン）：
 
@@ -107,12 +91,12 @@ ${s1 ? `\n【前回セッション1「動機の核心カード」より参照】
 
 ---
 褒めず、正確に。弱点も全て含める。日本語で。`;
-      }
+    }
 
-      if (sessionNumber === 3) {
-        const s1 = previousSummaries.find(s => s.sessionNumber === 1);
-        const s2 = previousSummaries.find(s => s.sessionNumber === 2);
-        system = `あなたはプロのコーチです。3回のセッションを統合して「${userName}の自分軸カード」を完成させてください。
+    if (sessionNumber === 3) {
+      const s1 = previousSummaries.find(s => s.sessionNumber === 1);
+      const s2 = previousSummaries.find(s => s.sessionNumber === 2);
+      system = `あなたはプロのコーチです。3回のセッションを統合して「${userName}の自分軸カード」を完成させてください。
 ${s1 ? `\n【SESSION 1「動機の核心カード」】\n${s1.summary}\n` : ''}${s2 ? `\n【SESSION 2「成功条件・失敗条件カード」】\n${s2.summary}\n` : ''}
 出力形式（マークダウン）：
 
@@ -142,17 +126,22 @@ ${s1 ? `\n【SESSION 1「動機の核心カード」】\n${s1.summary}\n` : ''}$
 
 ---
 褒めず、正確に。3回のセッションを全て統合して。日本語で。`;
-      }
-
-      const messages = [{ role: 'user', content: JSON.stringify(allAnswers) }];
-      const text = await callClaude(system, messages, 1500);
-      return res.json({ text });
     }
 
-    // ── 統合分身ドキュメント生成 ──────────────────────────────────────
-    if (type === 'generate') {
-      const { userName, allSessionData } = req.body;
-      const system = `あなたはプロのコーチ兼分析者です。3回のセッションカードを統合して、${userName}の「分身ドキュメント」を作成してください。
+    return {
+      system,
+      messages: [{ role: 'user', content: JSON.stringify(allAnswers) }],
+      max_tokens: 1000,
+    };
+  }
+
+  if (type === 'generate') {
+    const { userName, allSessionData } = body;
+    const content = allSessionData
+      .map(s => `【SESSION ${s.sessionNumber} カード】\n${s.summary}\n\n【詳細回答】\n${JSON.stringify(s.answers)}`)
+      .join('\n\n===\n\n');
+    return {
+      system: `あなたはプロのコーチ兼分析者です。3回のセッションカードを統合して、${userName}の「分身ドキュメント」を作成してください。
 
 出力形式（マークダウン）：
 
@@ -199,18 +188,52 @@ ${s1 ? `\n【SESSION 1「動機の核心カード」】\n${s1.summary}\n` : ''}$
 -
 
 ---
-褒めず、正確に。3セッション全てを統合して。日本語で。`;
-
-      const content = allSessionData
-        .map(s => `【SESSION ${s.sessionNumber} カード】\n${s.summary}\n\n【詳細回答】\n${JSON.stringify(s.answers)}`)
-        .join('\n\n===\n\n');
-      const text = await callClaude(system, [{ role: 'user', content }], 3000);
-      return res.json({ text });
-    }
-
-    return res.status(400).json({ error: 'Unknown type' });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: e.message || 'Internal error' });
+褒めず、正確に。3セッション全てを統合して。日本語で。`,
+      messages: [{ role: 'user', content }],
+      max_tokens: 3000,
+    };
   }
+
+  return null;
+}
+
+export default async function handler(req) {
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  }
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
+  }
+
+  const request = buildRequest(body);
+  if (!request) {
+    return new Response(JSON.stringify({ error: 'Unknown type' }), { status: 400 });
+  }
+
+  const anthropicRes = await fetch(ANTHROPIC_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({ model: MODEL, stream: true, ...request }),
+  });
+
+  if (!anthropicRes.ok) {
+    const err = await anthropicRes.json().catch(() => ({}));
+    return new Response(JSON.stringify({ error: err.error?.message || 'API error' }), { status: anthropicRes.status });
+  }
+
+  return new Response(anthropicRes.body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }

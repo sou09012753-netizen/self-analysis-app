@@ -208,6 +208,35 @@ const renderMd = (text) => {
   });
 };
 
+// ── SSEストリーム読み取りヘルパー ────────────────────────────────────────
+const readStream = async (res, onChunk) => {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+          text += parsed.delta.text;
+          onChunk(text);
+        }
+      } catch {}
+    }
+  }
+  return text;
+};
+
 // ── メインコンポーネント ───────────────────────────────────────────────
 export default function SelfAnalysisApp() {
   const [view, setView]         = useState('landing');
@@ -375,8 +404,7 @@ export default function SelfAnalysisApp() {
           conversationHistory: convHistory,
         }),
       });
-      const result = await res.json();
-      fu = result.text || '';
+      fu = await readStream(res, () => {});
       if (fu && fu !== '十分です') {
         setFollowUp(fu);
         setConvHistory(prev => [
@@ -406,9 +434,14 @@ export default function SelfAnalysisApp() {
   };
 
   // ── セッション完了・カード生成 ──────────────────────────────────────
+  const [summaryError, setSummaryError] = useState(false);
+  const [pendingAnswers, setPendingAnswers] = useState(null);
+
   const completeSession = async (answers) => {
-    setActiveSessionId(null); // 途中保存：完了したのでクリア
+    setActiveSessionId(null);
     try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    setSummaryError(false);
+    setPendingAnswers(answers);
     setIsSummarizing(true);
     setView('session-summary');
 
@@ -427,15 +460,22 @@ export default function SelfAnalysisApp() {
       }
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
+
     try {
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'summary', sessionNumber: activeId, userName: data.userName, allAnswers, previousSummaries }),
+        signal: controller.signal,
       });
-      const result = await res.json();
-      const summary = result.text || '';
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const summary = await readStream(res, (partial) => setCurrentSummary(partial));
+      if (!summary) throw new Error('Empty response');
       setCurrentSummary(summary);
+      setSummaryError(false);
       setData(prev => ({
         ...prev,
         activeSessionId: null,
@@ -445,11 +485,17 @@ export default function SelfAnalysisApp() {
         },
       }));
     } catch (e) {
-      setCurrentSummary('カードの生成に失敗しました。');
+      clearTimeout(timeoutId);
+      setSummaryError(true);
+      setCurrentSummary('');
       patchSession(activeId, { status: 'completed', answers, completedAt: new Date().toISOString() });
     }
 
     setIsSummarizing(false);
+  };
+
+  const retryCard = () => {
+    if (pendingAnswers) completeSession(pendingAnswers);
   };
 
   // ── 統合ドキュメント生成 ────────────────────────────────────────────
@@ -475,8 +521,8 @@ export default function SelfAnalysisApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'generate', userName: data.userName, allSessionData }),
       });
-      const result = await res.json();
-      setData(prev => ({ ...prev, integratedDoc: result.text || '' }));
+      const doc = await readStream(res, (partial) => setData(prev => ({ ...prev, integratedDoc: partial })));
+      setData(prev => ({ ...prev, integratedDoc: doc }));
     } catch (e) {
       setData(prev => ({ ...prev, integratedDoc: 'エラーが発生しました。もう一度お試しください。' }));
     }
@@ -876,6 +922,11 @@ export default function SelfAnalysisApp() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '20px 0' }}>
                   <span style={{ color: C.gold }}>·</span>
                   <span style={{ fontSize: '13px' }}>カードを生成しています...</span>
+                </div>
+              ) : summaryError && summaryTab === 0 ? (
+                <div style={{ padding: '20px 0' }}>
+                  <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '16px' }}>カードの生成に失敗しました。もう一度お試しください。</p>
+                  <button onClick={retryCard} style={goldBtn(true)}>再生成する</button>
                 </div>
               ) : (
                 renderMd(tabs[summaryTab]?.content || '')
