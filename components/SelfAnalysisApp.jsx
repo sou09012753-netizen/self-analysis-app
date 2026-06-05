@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { getSupabaseClient } from '../lib/supabaseClient';
 
-const OLD_STORAGE_KEY = 'coaching_sen_v2';
 const DRAFT_KEY = 'coaching_sen_draft';
-const UID_KEY = 'coaching_sen_uid';
 
 const SESSIONS = [
   {
@@ -234,15 +233,15 @@ export default function SelfAnalysisApp() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [saveStatus, setSaveStatus]     = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const saveTimer = useRef(null);
   const dbSaveTimer = useRef(null);
   const userIdRef = useRef(null);
+  const tokenRef = useRef(null);
 
-  // DB / LocalStorage 読み込み
+  // 認証チェック → DBロード
   useEffect(() => {
-    let uid = localStorage.getItem(UID_KEY);
-    if (!uid) { uid = crypto.randomUUID(); localStorage.setItem(UID_KEY, uid); }
-    userIdRef.current = uid;
+    const supabase = getSupabaseClient();
 
     const applyData = (parsed) => {
       setData(parsed);
@@ -257,45 +256,45 @@ export default function SelfAnalysisApp() {
       }
     };
 
-    fetch(`/api/db/load?userId=${uid}`)
-      .then(r => r.json())
-      .then(({ sessionData }) => {
-        if (sessionData) {
-          applyData(sessionData);
-        } else {
-          try {
-            const raw = localStorage.getItem(OLD_STORAGE_KEY);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            applyData(parsed);
-            fetch('/api/db/save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: uid, userName: parsed.userName, sessionData: parsed }),
-            }).catch(() => {});
-            localStorage.removeItem(OLD_STORAGE_KEY);
-          } catch {}
-        }
-      })
-      .catch(() => {
-        try {
-          const raw = localStorage.getItem(OLD_STORAGE_KEY);
-          if (!raw) return;
-          const parsed = JSON.parse(raw);
-          applyData(parsed);
-        } catch {}
-      });
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { window.location.href = '/login'; return; }
+
+      userIdRef.current = session.user.id;
+      tokenRef.current = session.access_token;
+      setAuthChecking(false);
+
+      try {
+        const res = await fetch('/api/db/load', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        const { sessionData } = await res.json();
+        if (sessionData) applyData(sessionData);
+      } catch {}
+    };
+
+    init();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') { window.location.href = '/login'; }
+      if (session?.access_token) tokenRef.current = session.access_token;
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // DB 書き込み（デバウンス1秒）
   useEffect(() => {
-    if (!data || !userIdRef.current) return;
+    if (!data || !tokenRef.current) return;
     if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current);
     dbSaveTimer.current = setTimeout(() => {
       fetch('/api/db/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: userIdRef.current, userName: data.userName, sessionData: data }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenRef.current}`,
+        },
+        body: JSON.stringify({ userName: data.userName, sessionData: data }),
       }).catch(() => {});
     }, 1000);
     return () => { if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current); };
@@ -341,6 +340,25 @@ export default function SelfAnalysisApp() {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus('');
     setView('session-select');
+  };
+
+  const handleSignOut = async () => {
+    const supabase = getSupabaseClient();
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm('データをリセットしますか？全セッションの回答が削除されます。')) return;
+    if (tokenRef.current) {
+      await fetch('/api/db/delete', {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${tokenRef.current}` },
+      }).catch(() => {});
+    }
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    setData(null);
+    setView('landing');
   };
 
   // ── ランディング ──────────────────────────────────────────────────────
@@ -571,6 +589,8 @@ export default function SelfAnalysisApp() {
 
   const allDone = data && [1, 2, 3].every(i => data.sessions[i].status === 'completed');
 
+  if (authChecking) return null;
+
   // ────────────────────────────────────────────────────────────────────
   // LANDING
   // ────────────────────────────────────────────────────────────────────
@@ -630,9 +650,16 @@ export default function SelfAnalysisApp() {
         <Head><title>セッション選択 — コーチングSEN</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '48px 20px' }}>
           <div style={{ maxWidth: '520px', margin: '0 auto' }}>
-            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>COACHING SEN</p>
-            <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', marginBottom: '4px' }}>{data.userName}</h2>
-            <p style={{ color: C.dim, fontSize: '12px', marginBottom: '40px' }}>セッションを選択してください</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>COACHING SEN</p>
+                <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', marginBottom: '4px' }}>{data.userName}</h2>
+                <p style={{ color: C.dim, fontSize: '12px', marginBottom: '40px' }}>セッションを選択してください</p>
+              </div>
+              <button onClick={handleSignOut} style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.dim, fontSize: '11px', cursor: 'pointer', fontFamily: C.font, marginTop: '2px' }}>
+                ログアウト
+              </button>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {SESSIONS.map(cfg => {
                 const id = cfg.id;
@@ -675,7 +702,7 @@ export default function SelfAnalysisApp() {
               </div>
             )}
             <div style={{ marginTop: '28px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => { if (window.confirm('データをリセットしますか？')) { localStorage.removeItem(UID_KEY); localStorage.removeItem(DRAFT_KEY); userIdRef.current = null; setData(null); setView('landing'); } }} style={ghostBtn({ fontSize: '11px', color: '#333', borderColor: '#1a1a1a', padding: '8px 14px' })}>リセット</button>
+              <button onClick={handleReset} style={ghostBtn({ fontSize: '11px', color: '#333', borderColor: '#1a1a1a', padding: '8px 14px' })}>リセット</button>
             </div>
           </div>
         </div>

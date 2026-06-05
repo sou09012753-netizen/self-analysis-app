@@ -199,6 +199,13 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser]       = useState(null);
   const [expandedSession, setExpandedSession] = useState(null);
 
+  const [newEmail, setNewEmail]       = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isCreating, setIsCreating]   = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createSuccess, setCreateSuccess] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = sessionStorage.getItem('admin_authed');
@@ -255,6 +262,31 @@ export default function AdminPage() {
     setAuthed(false);
     setPw('');
     setUsers([]);
+  };
+
+  const handleCreateUser = async () => {
+    if (!newEmail.trim() || !newPassword || isCreating) return;
+    setIsCreating(true);
+    setCreateError('');
+    setCreateSuccess('');
+    try {
+      const res = await fetch('/api/admin/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: pw, email: newEmail.trim(), userPassword: newPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'ユーザー作成に失敗しました');
+      setCreateSuccess(`${newEmail.trim()} を作成しました`);
+      setNewEmail('');
+      setNewPassword('');
+      setShowCreateForm(false);
+      fetchUsers(pw);
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   // ── ログイン画面 ──────────────────────────────────────────────────────
@@ -324,6 +356,54 @@ export default function AdminPage() {
                 ログアウト
               </button>
             </div>
+          </div>
+
+          {/* クライアント追加フォーム */}
+          <div style={{ marginBottom: '28px' }}>
+            {!showCreateForm ? (
+              <button
+                onClick={() => { setShowCreateForm(true); setCreateError(''); setCreateSuccess(''); }}
+                style={{ padding: '11px 20px', border: `1px solid ${C.gold}66`, borderRadius: '4px', background: 'transparent', color: C.gold, fontSize: '12px', letterSpacing: '0.1em', cursor: 'pointer', fontFamily: C.font }}
+              >
+                ＋ 新規クライアント追加
+              </button>
+            ) : (
+              <div style={{ padding: '24px', border: `1px solid ${C.gold}33`, borderRadius: '8px', background: '#0c0c0c' }}>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '16px' }}>新規クライアント</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
+                  <input
+                    type="email" placeholder="メールアドレス"
+                    value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                    style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                  />
+                  <input
+                    type="password" placeholder="初期パスワード（8文字以上）"
+                    value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateUser()}
+                    style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                  />
+                </div>
+                {createError && <p style={{ color: C.red, fontSize: '12px', marginBottom: '10px' }}>{createError}</p>}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={handleCreateUser}
+                    disabled={!newEmail.trim() || !newPassword || isCreating}
+                    style={{ padding: '11px 22px', border: 'none', borderRadius: '4px', background: (newEmail.trim() && newPassword) ? C.gold : '#1a1a1a', color: (newEmail.trim() && newPassword) ? '#0a0a0a' : C.dim, cursor: (newEmail.trim() && newPassword) ? 'pointer' : 'not-allowed', fontSize: '12px', fontFamily: C.font }}
+                  >
+                    {isCreating ? '作成中...' : '追加'}
+                  </button>
+                  <button
+                    onClick={() => { setShowCreateForm(false); setCreateError(''); }}
+                    style={{ padding: '11px 16px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.dim, fontSize: '12px', cursor: 'pointer', fontFamily: C.font }}
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            )}
+            {createSuccess && (
+              <p style={{ color: C.green, fontSize: '12px', marginTop: '10px' }}>{createSuccess}</p>
+            )}
           </div>
 
           {/* ローディング / エラー */}
