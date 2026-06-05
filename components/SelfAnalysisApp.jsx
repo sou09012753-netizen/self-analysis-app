@@ -1,8 +1,23 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import { getSupabaseClient } from '../lib/supabaseClient';
 
 const DRAFT_KEY = 'coaching_sen_draft';
+const SESSION_KEY = 'coaching_sen_token';
+
+const parseJwt = (token) => {
+  try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
+};
+
+const getValidSession = () => {
+  try {
+    const token = localStorage.getItem(SESSION_KEY);
+    if (!token) return null;
+    const payload = parseJwt(token);
+    if (!payload) return null;
+    if (Date.now() / 1000 >= payload.exp - 60) return null;
+    return { token, userId: payload.sub };
+  } catch { return null; }
+};
 
 const SESSIONS = [
   {
@@ -241,7 +256,12 @@ export default function SelfAnalysisApp() {
 
   // 認証チェック → DBロード
   useEffect(() => {
-    const subRef = { current: null };
+    const session = getValidSession();
+    if (!session) { window.location.href = '/login'; return; }
+
+    userIdRef.current = session.userId;
+    tokenRef.current = session.token;
+    setAuthChecking(false);
 
     const applyData = (parsed) => {
       setData(parsed);
@@ -256,37 +276,12 @@ export default function SelfAnalysisApp() {
       }
     };
 
-    (async () => {
-      try {
-        const supabase = await getSupabaseClient();
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { window.location.href = '/login'; return; }
-
-        userIdRef.current = session.user.id;
-        tokenRef.current = session.access_token;
-        setAuthChecking(false);
-
-        try {
-          const res = await fetch('/api/db/load', {
-            headers: { 'Authorization': `Bearer ${session.access_token}` },
-          });
-          const { sessionData } = await res.json();
-          if (sessionData) applyData(sessionData);
-        } catch {}
-
-        const { data } = supabase.auth.onAuthStateChange((event, session) => {
-          if (event === 'SIGNED_OUT') { window.location.href = '/login'; }
-          if (session?.access_token) tokenRef.current = session.access_token;
-        });
-        subRef.current = data.subscription;
-      } catch (err) {
-        console.error('Auth error:', err);
-        setAuthChecking(false);
-      }
-    })();
-
-    return () => { subRef.current?.unsubscribe(); };
+    fetch('/api/db/load', {
+      headers: { 'Authorization': `Bearer ${session.token}` },
+    })
+      .then(r => r.json())
+      .then(({ sessionData }) => { if (sessionData) applyData(sessionData); })
+      .catch(() => {});
   }, []);
 
   // DB 書き込み（デバウンス1秒）
@@ -348,9 +343,8 @@ export default function SelfAnalysisApp() {
     setView('session-select');
   };
 
-  const handleSignOut = async () => {
-    const supabase = await getSupabaseClient();
-    await supabase.auth.signOut();
+  const handleSignOut = () => {
+    try { localStorage.removeItem(SESSION_KEY); } catch {}
     window.location.href = '/login';
   };
 
