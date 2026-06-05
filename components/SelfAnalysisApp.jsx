@@ -241,7 +241,7 @@ export default function SelfAnalysisApp() {
 
   // 認証チェック → DBロード
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    const subRef = { current: null };
 
     const applyData = (parsed) => {
       setData(parsed);
@@ -256,31 +256,37 @@ export default function SelfAnalysisApp() {
       }
     };
 
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { window.location.href = '/login'; return; }
-
-      userIdRef.current = session.user.id;
-      tokenRef.current = session.access_token;
-      setAuthChecking(false);
-
+    (async () => {
       try {
-        const res = await fetch('/api/db/load', {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        const supabase = getSupabaseClient();
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { window.location.href = '/login'; return; }
+
+        userIdRef.current = session.user.id;
+        tokenRef.current = session.access_token;
+        setAuthChecking(false);
+
+        try {
+          const res = await fetch('/api/db/load', {
+            headers: { 'Authorization': `Bearer ${session.access_token}` },
+          });
+          const { sessionData } = await res.json();
+          if (sessionData) applyData(sessionData);
+        } catch {}
+
+        const { data } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === 'SIGNED_OUT') { window.location.href = '/login'; }
+          if (session?.access_token) tokenRef.current = session.access_token;
         });
-        const { sessionData } = await res.json();
-        if (sessionData) applyData(sessionData);
-      } catch {}
-    };
+        subRef.current = data.subscription;
+      } catch (err) {
+        console.error('Auth error:', err);
+        setAuthChecking(false);
+      }
+    })();
 
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') { window.location.href = '/login'; }
-      if (session?.access_token) tokenRef.current = session.access_token;
-    });
-
-    return () => subscription.unsubscribe();
+    return () => { subRef.current?.unsubscribe(); };
   }, []);
 
   // DB 書き込み（デバウンス1秒）

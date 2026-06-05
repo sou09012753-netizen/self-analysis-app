@@ -17,11 +17,16 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.href = '/';
-      else setChecking(false);
-    });
+    (async () => {
+      try {
+        const supabase = getSupabaseClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) { window.location.href = '/'; return; }
+      } catch (err) {
+        console.error('Auth check error:', err);
+      }
+      setChecking(false);
+    })();
   }, []);
 
   const handleLogin = async () => {
@@ -30,11 +35,20 @@ export default function LoginPage() {
     setError('');
     try {
       const supabase = getSupabaseClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
       if (authError) throw authError;
       window.location.href = '/';
     } catch (err) {
-      setError('メールアドレスまたはパスワードが正しくありません');
+      if (err.message?.includes('Invalid login credentials') || err.message?.includes('invalid_credentials')) {
+        setError('メールアドレスまたはパスワードが正しくありません');
+      } else if (err.message?.includes('NEXT_PUBLIC') || err.message?.includes('required')) {
+        setError('システム設定エラー。管理者に連絡してください。');
+      } else {
+        setError('ログインに失敗しました: ' + err.message);
+      }
     } finally {
       setIsLoading(false);
     }
