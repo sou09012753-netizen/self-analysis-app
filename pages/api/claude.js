@@ -1,16 +1,14 @@
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 
-const headers = () => ({
-  'Content-Type': 'application/json',
-  'x-api-key': process.env.ANTHROPIC_API_KEY,
-  'anthropic-version': '2023-06-01',
-});
-
-const call = async (system, messages, maxTokens) => {
+const callClaude = async (system, messages, maxTokens) => {
   const res = await fetch(ANTHROPIC_API, {
     method: 'POST',
-    headers: headers(),
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
     body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages }),
   });
   const data = await res.json();
@@ -20,10 +18,10 @@ const call = async (system, messages, maxTokens) => {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
   const { type } = req.body;
 
   try {
+    // ── 深掘り追加質問 ────────────────────────────────────────────────
     if (type === 'followup') {
       const { question, answer, conversationHistory = [] } = req.body;
       const system = `あなたはプロのコーチです。自己分析ヒアリングを行っています。
@@ -31,104 +29,182 @@ export default async function handler(req, res) {
 
 ルール：
 - 判断しない、評価しない
-- 「なぜ」より「何を感じたか」を引き出す
-- 答えが浅い・回避的な時は「本当に正直に言うと？」
+- 「なぜ」より「何を感じたか」「その時どうしたか」を引き出す
+- 答えが浅い・回避的な時は「本当に正直に言うと？」と問い返す
 - 感情が動いている部分を深掘りする
 - 質問は短く1文で
-- 日本語で
+- 日本語で答える
 - 答えが既に十分に深い場合は「十分です」とだけ答える`;
-
       const messages = [
         ...conversationHistory,
         { role: 'user', content: `質問：${question}\n回答：${answer}` },
       ];
-      const text = await call(system, messages, 300);
+      const text = await callClaude(system, messages, 300);
       return res.json({ text });
     }
 
+    // ── セッションカード生成 ──────────────────────────────────────────
     if (type === 'summary') {
-      const { sessionNumber, sessionTitle, userName, allAnswers, previousSummaries = [] } = req.body;
+      const { sessionNumber, userName, allAnswers, previousSummaries = [] } = req.body;
+      let system = '';
 
-      const prevContext = previousSummaries.length > 0
-        ? `\n\n【前回までのセッションサマリー】\n${previousSummaries.map(s =>
-          `セッション${s.sessionNumber}「${s.title}」:\n${s.summary}`
-        ).join('\n\n')}`
-        : '';
-
-      const system = `あなたはプロのコーチです。セッション${sessionNumber}「${sessionTitle}」のヒアリング結果から、今日の発見サマリーカードを作成してください。${prevContext}
+      if (sessionNumber === 1) {
+        system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の動機の核心カード」を作成してください。
 
 出力形式（マークダウン）：
 
-## 今日の3大発見
-1. （具体的な発見）
-2. （具体的な発見）
-3. （具体的な発見）
+## ${userName}の動機の核心カード
 
-## ${userName}の核心
-（このセッションから見えた動機・パターンの核心を2〜3文で）
+### なぜ動くのか
+（根底にある動機を1〜2文で端的に。原体験との接続も含めて）
 
-## 繰り返すパターン
-**成功パターン：** （具体的に）
-**失敗パターン：** （具体的に）
+### 行動を点火するもの
+- （具体的に）
+- （具体的に）
+- （具体的に）
 
-${previousSummaries.length > 0 ? '## 前回から見えてきた変化\n（前回セッションと比較して新たに見えたこと）\n\n' : ''}## 次のセッションで深掘りすべきこと
-（具体的に1〜2点）
+### 行動を止めるもの
+- （具体的に）
+- （具体的に）
+- （具体的に）
+
+### 幼少期との接続
+（子ども時代の体験と現在の行動パターンがどう繋がっているか・1〜2文）
+
+### 今日最大の気づき
+（1文で端的に）
 
 ---
 褒めず、正確に。弱点も全て含める。日本語で。`;
+      }
+
+      if (sessionNumber === 2) {
+        const s1 = previousSummaries.find(s => s.sessionNumber === 1);
+        system = `あなたはプロのコーチです。ヒアリング結果から「${userName}の成功条件・失敗条件カード」を作成してください。
+${s1 ? `\n【前回セッション1「動機の核心カード」より参照】\n${s1.summary}\n` : ''}
+出力形式（マークダウン）：
+
+## ${userName}の成功条件・失敗条件カード
+
+### 成功する時の条件
+- （具体的に）
+- （具体的に）
+- （具体的に）
+
+### 失敗する時の条件
+- （具体的に）
+- （具体的に）
+- （具体的に）
+
+### 繰り返している失敗パターン
+（最も危険な繰り返しを1〜2文で。正直に）
+
+### セッション1「動機の核心」との接続
+（動機の核心と今回の発見がどう繋がるか・1〜2文）
+
+### 今日最大の気づき
+（1文で端的に）
+
+---
+褒めず、正確に。弱点も全て含める。日本語で。`;
+      }
+
+      if (sessionNumber === 3) {
+        const s1 = previousSummaries.find(s => s.sessionNumber === 1);
+        const s2 = previousSummaries.find(s => s.sessionNumber === 2);
+        system = `あなたはプロのコーチです。3回のセッションを統合して「${userName}の自分軸カード」を完成させてください。
+${s1 ? `\n【SESSION 1「動機の核心カード」】\n${s1.summary}\n` : ''}${s2 ? `\n【SESSION 2「成功条件・失敗条件カード」】\n${s2.summary}\n` : ''}
+出力形式（マークダウン）：
+
+## ${userName}の自分軸カード
+
+### ${userName}が定義する「成功」
+（1文で）
+
+### 絶対に譲れない価値観（TOP3）
+1.
+2.
+3.
+
+### 絶対にやらないこと（TOP3）
+1.
+2.
+3.
+
+### 3年後の宣言
+（数字と状態で具体的に）
+
+### 3セッション統合の核心
+（動機の根っこ → 行動パターン → 自分軸の繋がりを2〜3文で）
+
+### 今日最大の気づき
+（1文で端的に）
+
+---
+褒めず、正確に。3回のセッションを全て統合して。日本語で。`;
+      }
 
       const messages = [{ role: 'user', content: JSON.stringify(allAnswers) }];
-      const text = await call(system, messages, 1500);
+      const text = await callClaude(system, messages, 1500);
       return res.json({ text });
     }
 
+    // ── 統合分身ドキュメント生成 ──────────────────────────────────────
     if (type === 'generate') {
       const { userName, allSessionData } = req.body;
-
-      const system = `あなたはプロのコーチ兼分析者です。3回のセッションのヒアリング結果から、${userName}の分身ドキュメントを作成してください。
+      const system = `あなたはプロのコーチ兼分析者です。3回のセッションカードを統合して、${userName}の「分身ドキュメント」を作成してください。
 
 出力形式（マークダウン）：
 
 # ${userName} 分身ドキュメント
 
-## 核心的な動機（なぜ動くのか）
-（根底にある動機を具体的に。幼少期の体験との接続も含めて）
+## 核心的な動機
+（なぜ動くのかを端的に・幼少期との接続を含めて）
 
 ## 強み（使える武器）
-（箇条書きで5〜7項目、具体的に）
+- （具体的に）
+- （具体的に）
+- （具体的に）
+- （具体的に）
+- （具体的に）
 
-## 弱点（知っておくべきリスク）
-（箇条書きで5〜7項目、具体的に。オブラートに包まない）
+## 弱点とリスク（知っておくべきこと）
+- （具体的に・オブラートに包まない）
+- （具体的に）
+- （具体的に）
+- （具体的に）
+
+## 成功条件
+（どんな状況・環境・関係性があれば最大限動けるか）
+
+## 失敗条件
+（何が起きると失敗パターンが発動するか）
+
+## 自分軸
+**定義する成功：**
+**譲れない価値観：**
+**絶対にやらないこと：**
+**3年後の宣言：**
 
 ## 判断基準
-**動く条件：** （何があれば動けるか）
-**止まる条件：** （何が止め因子になるか）
-
-## 繰り返すパターン（成功）
-（具体的なシナリオで）
-
-## 繰り返すパターン（失敗）
-（具体的なシナリオで）
-
-## お金が入った時の行動予測
-（正直な予測を）
-
-## 熱量が下がった時の行動予測
-（正直な予測を）
+**動く時：**
+**止まる時：**
+**迷ったら問う：**
 
 ## Claudeへの指示
-（この人物と対話する際の具体的な注意点を5〜7項目）
+- （この人物と対話する際の具体的な注意点）
+-
+-
+-
+-
 
 ---
-褒めず、正確に。3回のセッションを統合して。日本語で。`;
+褒めず、正確に。3セッション全てを統合して。日本語で。`;
 
-      const messages = [{
-        role: 'user',
-        content: allSessionData.map(s =>
-          `【セッション${s.sessionNumber}: ${s.title}】\nサマリー: ${s.summary}\n\n詳細回答:\n${JSON.stringify(s.answers)}`
-        ).join('\n\n---\n\n')
-      }];
-      const text = await call(system, messages, 3000);
+      const content = allSessionData
+        .map(s => `【SESSION ${s.sessionNumber} カード】\n${s.summary}\n\n【詳細回答】\n${JSON.stringify(s.answers)}`)
+        .join('\n\n===\n\n');
+      const text = await callClaude(system, [{ role: 'user', content }], 3000);
       return res.json({ text });
     }
 
