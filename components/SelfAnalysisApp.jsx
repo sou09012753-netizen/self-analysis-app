@@ -258,7 +258,7 @@ export default function SelfAnalysisApp() {
 
     (async () => {
       try {
-        const supabase = getSupabaseClient();
+        const supabase = await getSupabaseClient();
 
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) { window.location.href = '/login'; return; }
@@ -349,7 +349,7 @@ export default function SelfAnalysisApp() {
   };
 
   const handleSignOut = async () => {
-    const supabase = getSupabaseClient();
+    const supabase = await getSupabaseClient();
     await supabase.auth.signOut();
     window.location.href = '/login';
   };

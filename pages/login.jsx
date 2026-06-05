@@ -19,7 +19,7 @@ export default function LoginPage() {
   useEffect(() => {
     (async () => {
       try {
-        const supabase = getSupabaseClient();
+        const supabase = await getSupabaseClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (session) { window.location.href = '/'; return; }
       } catch (err) {
@@ -44,8 +44,6 @@ export default function LoginPage() {
     } catch (err) {
       if (err.message?.includes('Invalid login credentials') || err.message?.includes('invalid_credentials')) {
         setError('メールアドレスまたはパスワードが正しくありません');
-      } else if (err.message?.includes('NEXT_PUBLIC') || err.message?.includes('required')) {
-        setError('システム設定エラー。管理者に連絡してください。');
       } else {
         setError('ログインに失敗しました: ' + err.message);
       }
