@@ -144,7 +144,7 @@ const getNextQ = (session, cfg) => {
   return null;
 };
 
-const defaultSession = () => ({ status: 'not_started', answers: {}, summary: '', completedAt: null });
+const defaultSession = () => ({ status: 'not_started', answers: {}, insights: {}, summary: '', completedAt: null });
 const defaultData = (name) => ({
   userName: name,
   activeSessionId: null,
@@ -218,6 +218,8 @@ export default function SelfAnalysisApp() {
   const [summaryTab, setSummaryTab]         = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [saveStatus, setSaveStatus]     = useState('');
+  const [shortWarning, setShortWarning] = useState(false);
+  const [insight, setInsight]           = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const saveTimer = useRef(null);
@@ -291,7 +293,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
-    setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus('');
+    setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
     setView('session-select');
   };
 
@@ -326,7 +328,7 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    setAnswer(''); setFollowUp(''); setConvHistory([]); setSummaryText(''); setSummaryError(''); setSaveStatus('');
+    setAnswer(''); setFollowUp(''); setConvHistory([]); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
@@ -334,6 +336,12 @@ export default function SelfAnalysisApp() {
 
   const handleSubmit = async () => {
     if (!answer.trim() || isLoading) return;
+    if (answer.trim().length <= 20) {
+      setShortWarning(true);
+      setTimeout(() => setShortWarning(false), 3000);
+      return;
+    }
+    setShortWarning(false);
     const cfg = SESSIONS[activeId - 1];
     const session = data.sessions[activeId];
     const current = getNextQ(session, cfg);
@@ -342,7 +350,9 @@ export default function SelfAnalysisApp() {
     const saved = answer;
     const newAnswers = { ...session.answers, [key]: saved };
     const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
-    patchSession(activeId, { answers: newAnswers });
+    const newInsights = { ...(session.insights || {}), [key]: insight.trim() };
+    patchSession(activeId, { answers: newAnswers, insights: newInsights });
+    setInsight('');
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     setSaveStatus('saved');
     setTimeout(() => setSaveStatus(''), 2000);
@@ -350,10 +360,9 @@ export default function SelfAnalysisApp() {
     setAnswer('');
     let fu = '';
     try {
-      fu = await callAPI({ type: 'followup', question: current.question, answer: saved, conversationHistory: convHistory });
+      fu = await callAPI({ type: 'followup', question: current.question, answer: saved });
       if (fu && fu !== '十分です') {
         setFollowUp(fu);
-        setConvHistory(prev => [...prev, { role: 'user', content: `質問：${current.question}\n回答：${saved}` }, { role: 'assistant', content: fu }]);
       }
     } catch {
       setSaveStatus('error');
@@ -364,7 +373,6 @@ export default function SelfAnalysisApp() {
   };
 
   const handleNext = async () => {
-    setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus('');
     const cfg = SESSIONS[activeId - 1];
     const answers = data.sessions[activeId].answers;
     if (Object.keys(answers).length >= getTotalQ(cfg)) await runCompleteSession(activeId, answers, data);
@@ -432,7 +440,7 @@ export default function SelfAnalysisApp() {
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
     let t = `${bar}\nコーチングSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
-    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { t += `Q: ${q}\nA: ${session.answers[`${pi}-${qi}`] || '（未回答）'}\n\n`; }); });
+    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     return t;
@@ -446,7 +454,7 @@ export default function SelfAnalysisApp() {
     SESSIONS.forEach((cfg, idx) => {
       const id = idx + 1; const session = data.sessions[id];
       t += `■ SESSION ${id}「${cfg.title}」\n\n`;
-      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { t += `Q: ${q}\nA: ${session.answers[`${pi}-${qi}`] || '（未回答）'}\n\n`; }); });
+      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
       t += '\n';
     });
     return t;
@@ -594,10 +602,16 @@ export default function SelfAnalysisApp() {
                     <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
                   </div>
                 )}
-                <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '14px' }} />
+                <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
+                {shortWarning && <p style={{ color: '#e05555', fontSize: '12px', margin: '0 0 10px' }}>もう少し詳しく教えてください</p>}
+                {!followUp && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
+                    <input type="text" value={insight} onChange={e => setInsight(e.target.value)} placeholder="気づいた一文を..." style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.muted, fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }} />
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button onClick={handleSubmit} disabled={!answer.trim() || isLoading} style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}>{isLoading ? '読んでいます...' : '回答する'}</button>
-                  {followUp && <button onClick={handleNext} style={ghostBtn({ padding: '15px 20px' })}>次へ</button>}
                 </div>
               </>
             ) : (
