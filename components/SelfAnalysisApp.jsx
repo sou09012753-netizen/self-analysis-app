@@ -210,7 +210,6 @@ export default function SelfAnalysisApp() {
   const [nameInput, setNameInput] = useState('');
   const [answer, setAnswer]           = useState('');
   const [followUp, setFollowUp]       = useState('');
-  const [convHistory, setConvHistory] = useState([]);
   const [isLoading, setIsLoading]     = useState(false);
   const [isSummarizing, setIsSummarizing]   = useState(false);
   const [summaryText, setSummaryText]       = useState('');
@@ -293,7 +292,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
-    setFollowUp(''); setConvHistory([]); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
+    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
     setView('session-select');
   };
 
@@ -328,7 +327,7 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    setAnswer(''); setFollowUp(''); setConvHistory([]); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
+    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
