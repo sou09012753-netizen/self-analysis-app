@@ -220,6 +220,8 @@ export default function SelfAnalysisApp() {
   const [shortWarning, setShortWarning] = useState(false);
   const [insight, setInsight]           = useState('');
   const [followupDepth, setFollowupDepth] = useState(0);
+  const [reflectText, setReflectText]   = useState('');
+  const [onelineText, setOnelineText]   = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const saveTimer = useRef(null);
@@ -296,7 +298,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
-    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0);
+    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     setView('session-select');
   };
 
@@ -331,10 +333,21 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0);
+    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
+  };
+
+  const showReflect = async (savedAnswer) => {
+    try {
+      const result = await callAPI({ type: 'reflect', answer: savedAnswer });
+      if (result && result.trim()) {
+        setReflectText(result.trim());
+        await new Promise(r => setTimeout(r, 3000));
+        setReflectText('');
+      }
+    } catch {}
   };
 
   const handleSubmit = async () => {
@@ -352,7 +365,6 @@ export default function SelfAnalysisApp() {
     setAnswer('');
 
     if (followUp) {
-      // followupへの回答：同じ質問キーを上書きして深掘りを続けるか判断
       const key = followupKeyRef.current;
       const question = followupQuestionRef.current;
       const newAnswers = { ...session.answers, [key]: saved };
@@ -364,6 +376,7 @@ export default function SelfAnalysisApp() {
       if (!shouldContinue) {
         setFollowUp('');
         setFollowupDepth(0);
+        await showReflect(saved);
         if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
         setIsLoading(false);
         return;
@@ -377,6 +390,7 @@ export default function SelfAnalysisApp() {
         } else {
           setFollowUp('');
           setFollowupDepth(0);
+          await showReflect(saved);
           if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
         }
       } catch {
@@ -387,7 +401,6 @@ export default function SelfAnalysisApp() {
       }
       setIsLoading(false);
     } else {
-      // 初回回答：次の未回答質問に保存してfollowupを取得
       const current = getNextQ(session, cfg);
       if (!current) { setIsLoading(false); return; }
       const key = `${current.phaseIdx}-${current.qIdx}`;
@@ -411,6 +424,7 @@ export default function SelfAnalysisApp() {
         } else {
           setFollowUp('');
           setFollowupDepth(0);
+          if (fu === '十分です') await showReflect(saved);
           if (isLast) await runCompleteSession(activeId, newAnswers, data);
         }
       } catch {
@@ -431,7 +445,7 @@ export default function SelfAnalysisApp() {
   const runCompleteSession = async (sessionId, answers, currentData) => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
-    setSummaryText(''); setSummaryError(''); setIsSummarizing(true); setView('session-summary');
+    setSummaryText(''); setSummaryError(''); setOnelineText(''); setIsSummarizing(true); setView('session-summary');
     try {
       const cfg = SESSIONS[sessionId - 1];
       const allAnswers = cfg.phases.map((phase, pi) => ({
@@ -442,6 +456,7 @@ export default function SelfAnalysisApp() {
       for (let i = 1; i < sessionId; i++) {
         if (currentData.sessions[i]?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: currentData.sessions[i].summary });
       }
+      callAPI({ type: 'onelineinsight', allAnswers }).then(text => { if (text) setOnelineText(text); }).catch(() => {});
       const summary = await callAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries });
       setSummaryText(summary);
       saveData(prev => ({
@@ -621,7 +636,10 @@ export default function SelfAnalysisApp() {
     const progress = Math.round(answeredQ / totalQ * 100);
     return (
       <>
-        <Head><title>SESSION {activeId} — {cfg.title}</title></Head>
+        <Head>
+          <title>SESSION {activeId} — {cfg.title}</title>
+          <style>{`@keyframes reflectIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+        </Head>
         {resumeToast && <div style={{ position: 'fixed', top: '16px', right: '16px', zIndex: 200, background: '#0f1f0f', border: `1px solid ${C.green}`, borderRadius: '6px', padding: '10px 18px', color: C.green, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}><span>●</span> 前回の続きから再開しました</div>}
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '32px 20px 80px' }}>
           <div style={{ maxWidth: '580px', margin: '0 auto' }}>
@@ -641,32 +659,42 @@ export default function SelfAnalysisApp() {
             </div>
             {current ? (
               <>
-                {!followUp && (
+                {reflectText ? (
+                  <div style={{ textAlign: 'center', padding: '80px 0' }}>
+                    <p style={{ color: C.gold, fontSize: '20px', fontWeight: '300', lineHeight: '1.9', letterSpacing: '0.02em', animation: 'reflectIn 0.7s ease forwards' }}>
+                      {reflectText}
+                    </p>
+                  </div>
+                ) : (
                   <>
-                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
-                    <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
-                      <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
-                      <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
+                    {!followUp && (
+                      <>
+                        <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
+                        <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
+                          <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
+                          <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
+                        </div>
+                      </>
+                    )}
+                    {followUp && (
+                      <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
+                        <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>もう少しだけ</p>
+                        <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
+                      </div>
+                    )}
+                    <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
+                    {shortWarning && <p style={{ color: '#e05555', fontSize: '12px', margin: '0 0 10px' }}>もう少し詳しく教えてください</p>}
+                    {!followUp && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
+                        <input type="text" value={insight} onChange={e => setInsight(e.target.value)} placeholder="気づいた一文を..." style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.muted, fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }} />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={handleSubmit} disabled={!answer.trim() || isLoading} style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}>{isLoading ? '読んでいます...' : '回答する'}</button>
                     </div>
                   </>
                 )}
-                {followUp && (
-                  <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
-                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>もう少しだけ</p>
-                    <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
-                  </div>
-                )}
-                <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
-                {shortWarning && <p style={{ color: '#e05555', fontSize: '12px', margin: '0 0 10px' }}>もう少し詳しく教えてください</p>}
-                {!followUp && (
-                  <div style={{ marginBottom: '14px' }}>
-                    <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
-                    <input type="text" value={insight} onChange={e => setInsight(e.target.value)} placeholder="気づいた一文を..." style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.muted, fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }} />
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={handleSubmit} disabled={!answer.trim() || isLoading} style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}>{isLoading ? '読んでいます...' : '回答する'}</button>
-                </div>
               </>
             ) : (
               <div style={{ padding: '40px 0' }}>
@@ -706,7 +734,12 @@ export default function SelfAnalysisApp() {
             )}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '32px 36px', minHeight: '240px', marginBottom: '24px' }}>
               {isSummarizing
-                ? <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '20px 0' }}><span style={{ color: C.gold }}>·</span><span style={{ fontSize: '13px' }}>カードを作っています... しばらくお待ちください</span></div>
+                ? (onelineText
+                    ? <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                        <p style={{ color: C.gold, fontSize: '24px', fontWeight: '300', lineHeight: '1.9', margin: '0 0 24px', letterSpacing: '0.01em' }}>{onelineText}</p>
+                        <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.15em' }}>カードを作っています...</p>
+                      </div>
+                    : <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '20px 0' }}><span style={{ color: C.gold }}>·</span><span style={{ fontSize: '13px' }}>カードを作っています... しばらくお待ちください</span></div>)
                 : summaryError
                   ? <div style={{ padding: '20px 0' }}>
                       <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '8px' }}>生成に失敗しました</p>
