@@ -219,12 +219,16 @@ export default function SelfAnalysisApp() {
   const [saveStatus, setSaveStatus]     = useState('');
   const [shortWarning, setShortWarning] = useState(false);
   const [insight, setInsight]           = useState('');
+  const [followupDepth, setFollowupDepth] = useState(0);
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const saveTimer = useRef(null);
   const dbSaveTimer = useRef(null);
   const userIdRef = useRef(null);
   const tokenRef = useRef(null);
+  const followupKeyRef = useRef(null);
+  const followupQuestionRef = useRef('');
+  const followupIsLastRef = useRef(false);
 
   useEffect(() => {
     const session = getValidSession();
@@ -292,7 +296,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
-    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
+    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0);
     setView('session-select');
   };
 
@@ -327,7 +331,7 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false);
+    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0);
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
@@ -343,35 +347,82 @@ export default function SelfAnalysisApp() {
     setShortWarning(false);
     const cfg = SESSIONS[activeId - 1];
     const session = data.sessions[activeId];
-    const current = getNextQ(session, cfg);
-    if (!current) return;
-    const key = `${current.phaseIdx}-${current.qIdx}`;
     const saved = answer;
-    const newAnswers = { ...session.answers, [key]: saved };
-    const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
-    const newInsights = { ...(session.insights || {}), [key]: insight.trim() };
-    patchSession(activeId, { answers: newAnswers, insights: newInsights });
-    setInsight('');
-    try { localStorage.removeItem(DRAFT_KEY); } catch {}
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus(''), 2000);
     setIsLoading(true);
     setAnswer('');
-    let fu = '';
-    try {
-      fu = await callAPI({ type: 'followup', question: current.question, answer: saved });
-      if (fu && fu !== '十分です') {
-        setFollowUp(fu);
+
+    if (followUp) {
+      // followupへの回答：同じ質問キーを上書きして深掘りを続けるか判断
+      const key = followupKeyRef.current;
+      const question = followupQuestionRef.current;
+      const newAnswers = { ...session.answers, [key]: saved };
+      patchSession(activeId, { answers: newAnswers });
+
+      const isShallow = saved.trim().length <= 50 || /わからない|ない|普通|特にない/.test(saved);
+      const shouldContinue = isShallow && followupDepth < 3;
+
+      if (!shouldContinue) {
+        setFollowUp('');
+        setFollowupDepth(0);
+        if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
+        setIsLoading(false);
+        return;
       }
-    } catch {
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus(''), 2500);
+
+      try {
+        const fu = await callAPI({ type: 'followup', question, answer: saved });
+        if (fu && fu !== '十分です') {
+          setFollowUp(fu);
+          setFollowupDepth(prev => prev + 1);
+        } else {
+          setFollowUp('');
+          setFollowupDepth(0);
+          if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
+        }
+      } catch {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus(''), 2500);
+        setFollowUp('');
+        setFollowupDepth(0);
+      }
+      setIsLoading(false);
+    } else {
+      // 初回回答：次の未回答質問に保存してfollowupを取得
+      const current = getNextQ(session, cfg);
+      if (!current) { setIsLoading(false); return; }
+      const key = `${current.phaseIdx}-${current.qIdx}`;
+      const newAnswers = { ...session.answers, [key]: saved };
+      const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
+      const newInsights = { ...(session.insights || {}), [key]: insight.trim() };
+      patchSession(activeId, { answers: newAnswers, insights: newInsights });
+      setInsight('');
+      followupKeyRef.current = key;
+      followupQuestionRef.current = current.question;
+      followupIsLastRef.current = isLast;
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 2000);
+
+      try {
+        const fu = await callAPI({ type: 'followup', question: current.question, answer: saved });
+        if (fu && fu !== '十分です') {
+          setFollowUp(fu);
+          setFollowupDepth(1);
+        } else {
+          setFollowUp('');
+          setFollowupDepth(0);
+          if (isLast) await runCompleteSession(activeId, newAnswers, data);
+        }
+      } catch {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus(''), 2500);
+      }
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    if (isLast) { setFollowUp(''); await runCompleteSession(activeId, newAnswers, data); }
   };
 
   const handleNext = async () => {
+    setFollowupDepth(0);
     const cfg = SESSIONS[activeId - 1];
     const answers = data.sessions[activeId].answers;
     if (Object.keys(answers).length >= getTotalQ(cfg)) await runCompleteSession(activeId, answers, data);
