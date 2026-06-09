@@ -590,11 +590,15 @@ export default function SelfAnalysisApp() {
             </div>
             {current ? (
               <>
-                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
-                <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
-                  <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
-                  <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
-                </div>
+                {!followUp && (
+                  <>
+                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
+                    <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
+                      <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
+                      <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
+                    </div>
+                  </>
+                )}
                 {followUp && (
                   <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
                     <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>もう少しだけ</p>
