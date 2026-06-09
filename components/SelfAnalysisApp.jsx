@@ -230,7 +230,6 @@ export default function SelfAnalysisApp() {
     if (!session) { window.location.href = '/login'; return; }
     userIdRef.current = session.userId;
     tokenRef.current = session.token;
-    setAuthChecking(false);
 
     const applyData = (parsed) => {
       setData(parsed);
@@ -248,7 +247,8 @@ export default function SelfAnalysisApp() {
     fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${session.token}` } })
       .then(r => r.json())
       .then(({ sessionData }) => { if (sessionData) applyData(sessionData); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { setAuthChecking(false); });
   }, []);
 
   useEffect(() => {
@@ -355,7 +355,10 @@ export default function SelfAnalysisApp() {
         setFollowUp(fu);
         setConvHistory(prev => [...prev, { role: 'user', content: `質問：${current.question}\n回答：${saved}` }, { role: 'assistant', content: fu }]);
       }
-    } catch {}
+    } catch {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(''), 2500);
+    }
     setIsLoading(false);
     if (isLast) { setFollowUp(''); await runCompleteSession(activeId, newAnswers, data); }
   };
@@ -417,8 +420,10 @@ export default function SelfAnalysisApp() {
   };
 
   const downloadText = (filename, content) => {
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' })), download: filename });
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: filename });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const buildSessionText = (sid) => {
@@ -568,6 +573,7 @@ export default function SelfAnalysisApp() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   {saveStatus === 'saving' && <span style={{ color: '#444', fontSize: '10px' }}>保存中...</span>}
                   {saveStatus === 'saved' && <span style={{ color: C.green, fontSize: '10px' }}>✓ 保存済み</span>}
+                  {saveStatus === 'error' && <span style={{ color: '#e05555', fontSize: '10px' }}>通信エラー</span>}
                   <span style={{ color: C.dim, fontSize: '11px' }}>{progress}%</span>
                 </div>
               </div>
