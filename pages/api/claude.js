@@ -23,13 +23,12 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'followup') {
-      const { question, answer, conversationHistory = [] } = req.body;
-      const system = `あなたは世界最高峰のコーチです。クライアントの自己分析を深める追加質問を1つだけしてください。【絶対に守るルール】- 判断しない、評価しない、褒めない- 「なぜ」より「その時どうしたか」「何を感じたか」を引き出す- 答えが浅い・きれいすぎる時は「本当のところは？」と問い返す- クライアントが回避しているものを正面から聞く- 「承認を求めている」「本音を隠している」パターンを感知したら直接聞く- 質問は短く1文。圧をかけていい- 答えが既に十分に深い場合のみ「十分です」とだけ答える- 日本語で答える`;
+      const { question, answer } = req.body;
+      const system = `あなたは世界最高峰のコーチです。【今やること】今の質問に対する回答だけを見て、深掘りが必要かどうかを判断してください。【判断基準】回答が具体的・正直・核心を突いている → 「十分です」とだけ返す。回答が抽象的・きれいすぎる・表面的・短すぎる → 深掘り質問を1つだけ返す。【深掘り質問のルール】- 今の質問の回答だけに基づいて作る。前の質問の話を引っ張らない- 「なぜ」より「その時どうしたか」「何を感じたか」- 回避しているものを正面から聞く- 短く1文。圧をかけていい- 判断しない、評価しない、褒めない- 日本語で答える`;
       const messages = [
-        ...conversationHistory,
-        { role: 'user', content: `質問：${question}\n回答：${answer}` },
+        { role: 'user', content: `【今の質問】${question}\n\n【回答】${answer}` },
       ];
-      const text = await callClaude(system, messages, 300);
+      const text = await callClaude(system, messages, 200);
       return res.json({ text });
     }
 
