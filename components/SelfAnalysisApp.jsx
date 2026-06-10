@@ -217,7 +217,6 @@ export default function SelfAnalysisApp() {
   const [summaryTab, setSummaryTab]         = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [saveStatus, setSaveStatus]     = useState('');
-  const [shortWarning, setShortWarning] = useState(false);
   const [insight, setInsight]           = useState('');
   const [followupDepth, setFollowupDepth] = useState(0);
   const [reflectText, setReflectText]   = useState('');
@@ -298,7 +297,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
-    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0); setReflectText(''); setOnelineText('');
+    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     setView('session-select');
   };
 
@@ -333,7 +332,7 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setShortWarning(false); setFollowupDepth(0); setReflectText(''); setOnelineText('');
+    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
@@ -352,12 +351,6 @@ export default function SelfAnalysisApp() {
 
   const handleSubmit = async () => {
     if (!answer.trim() || isLoading) return;
-    if (answer.trim().length <= 20) {
-      setShortWarning(true);
-      setTimeout(() => setShortWarning(false), 3000);
-      return;
-    }
-    setShortWarning(false);
     const cfg = SESSIONS[activeId - 1];
     const session = data.sessions[activeId];
     const saved = answer;
@@ -683,7 +676,6 @@ export default function SelfAnalysisApp() {
                       </div>
                     )}
                     <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
-                    {shortWarning && <p style={{ color: '#e05555', fontSize: '12px', margin: '0 0 10px' }}>もう少し詳しく教えてください</p>}
                     {!followUp && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
