@@ -230,6 +230,7 @@ export default function SelfAnalysisApp() {
   const followupKeyRef = useRef(null);
   const followupQuestionRef = useRef('');
   const followupIsLastRef = useRef(false);
+  const conversationHistoryRef = useRef([]);
 
   useEffect(() => {
     const session = getValidSession();
@@ -297,6 +298,7 @@ export default function SelfAnalysisApp() {
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
+    conversationHistoryRef.current = [];
     setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     setView('session-select');
   };
@@ -332,6 +334,7 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
+    conversationHistoryRef.current = [];
     setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
@@ -363,27 +366,27 @@ export default function SelfAnalysisApp() {
       const newAnswers = { ...session.answers, [key]: saved };
       patchSession(activeId, { answers: newAnswers });
 
-      const isShallow = saved.trim().length <= 50 || /わからない|ない|普通|特にない/.test(saved);
-      const shouldContinue = isShallow && followupDepth < 3;
-
-      if (!shouldContinue) {
-        setFollowUp('');
-        setFollowupDepth(0);
-        await showReflect(saved);
-        if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
-        setIsLoading(false);
-        return;
-      }
-
       try {
-        const fu = await callAPI({ type: 'followup', question, answer: saved });
+        const fu = await callAPI({
+          type: 'followup',
+          question,
+          answer: saved,
+          conversationHistory: conversationHistoryRef.current,
+          depth: followupDepth,
+        });
         if (fu && fu !== '十分です') {
+          conversationHistoryRef.current = [
+            ...conversationHistoryRef.current,
+            { role: 'user', content: saved },
+            { role: 'assistant', content: fu },
+          ];
           setFollowUp(fu);
           setFollowupDepth(prev => prev + 1);
         } else {
+          conversationHistoryRef.current = [];
           setFollowUp('');
           setFollowupDepth(0);
-          await showReflect(saved);
+          if (fu === '十分です') await showReflect(saved);
           if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
         }
       } catch {
@@ -405,13 +408,24 @@ export default function SelfAnalysisApp() {
       followupKeyRef.current = key;
       followupQuestionRef.current = current.question;
       followupIsLastRef.current = isLast;
+      conversationHistoryRef.current = [];
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(''), 2000);
 
       try {
-        const fu = await callAPI({ type: 'followup', question: current.question, answer: saved });
+        const fu = await callAPI({
+          type: 'followup',
+          question: current.question,
+          answer: saved,
+          conversationHistory: [],
+          depth: 0,
+        });
         if (fu && fu !== '十分です') {
+          conversationHistoryRef.current = [
+            { role: 'user', content: `質問：${current.question}\n${saved}` },
+            { role: 'assistant', content: fu },
+          ];
           setFollowUp(fu);
           setFollowupDepth(1);
         } else {

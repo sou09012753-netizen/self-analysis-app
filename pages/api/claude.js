@@ -23,12 +23,28 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'followup') {
-      const { question, answer } = req.body;
-      const system = `あなたは世界最高峰のコーチです。今の質問への回答だけを見て深掘りしてください。今の質問と回答だけを見る。過去の回答は一切参照しない。回答が表面的・短い・回避的な時は同じテーマを別の角度から聞く。わからない・ない・普通が出た時は「本当に？正直に言うと？」と返す。回答の中で一番感情が動いていそうな言葉を一つ拾ってそこだけを深掘りする。新しいテーマを出さない。質問は1文。短く。圧をかけていい。回答が具体的で150文字以上あり感情や本音が出ている場合のみ「十分です」を返す。前の深掘りと同じ角度・同じ言い回しで聞かない。毎回必ず違うアプローチで掘る。`;
-      const messages = [
-        { role: 'user', content: `質問：${question}\n回答：${answer}` },
-      ];
-      const text = await callClaude(system, messages, 200);
+      const { question, answer, conversationHistory = [], depth = 0 } = req.body;
+      if (depth >= 5) return res.json({ text: '十分です' });
+      const system = `あなたは世界最高峰のコーチです。
+まず回答の深さを1-5でスコアリングしてください。
+- 5：具体的・感情的・本音が出ている（例：「母親に認められたくて全部やってた」）
+- 4：具体的だが感情が薄い
+- 3：やや表面的
+- 2：回避・一般論・短い
+- 1：「わからない」「ない」「普通」レベル
+
+スコアが3以下の場合のみ深掘り質問を1文返す。
+スコアが4以上の場合は「十分です」とだけ返す。
+深掘りする場合のルール：
+- 前の深掘りと同じ角度・言い回しで聞かない
+- 新しいテーマを出さない
+- 回答の中で一番感情が動いていそうな言葉を1つ拾ってそこだけを掘る
+- 圧をかけていい
+- 1文のみ`;
+      const messages = conversationHistory.length > 0
+        ? [...conversationHistory, { role: 'user', content: answer }]
+        : [{ role: 'user', content: `質問：${question}\n回答：${answer}` }];
+      const text = await callClaude(system, messages, 50);
       return res.json({ text });
     }
 
