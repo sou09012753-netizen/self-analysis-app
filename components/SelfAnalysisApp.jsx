@@ -219,6 +219,7 @@ export default function SelfAnalysisApp() {
   const [saveStatus, setSaveStatus]     = useState('');
   const [insight, setInsight]           = useState('');
   const [followupDepth, setFollowupDepth] = useState(0);
+  const [isFollowingUp, setIsFollowingUp] = useState(false);
   const [reflectText, setReflectText]   = useState('');
   const [onelineText, setOnelineText]   = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
@@ -299,7 +300,7 @@ export default function SelfAnalysisApp() {
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     conversationHistoryRef.current = [];
-    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
+    setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
     setView('session-select');
   };
 
@@ -335,7 +336,7 @@ export default function SelfAnalysisApp() {
       return;
     }
     conversationHistoryRef.current = [];
-    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setReflectText(''); setOnelineText('');
+    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
     setView('session-active');
@@ -365,6 +366,7 @@ export default function SelfAnalysisApp() {
       const question = followupQuestionRef.current;
       const newAnswers = { ...session.answers, [key]: saved };
       patchSession(activeId, { answers: newAnswers });
+      setIsFollowingUp(true);
 
       try {
         const fu = await callAPI({
@@ -395,6 +397,7 @@ export default function SelfAnalysisApp() {
         setFollowUp('');
         setFollowupDepth(0);
       }
+      setIsFollowingUp(false);
       setIsLoading(false);
     } else {
       const current = getNextQ(session, cfg);
@@ -412,6 +415,7 @@ export default function SelfAnalysisApp() {
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(''), 2000);
+      setIsFollowingUp(true);
 
       try {
         const fu = await callAPI({
@@ -438,6 +442,7 @@ export default function SelfAnalysisApp() {
         setSaveStatus('error');
         setTimeout(() => setSaveStatus(''), 2500);
       }
+      setIsFollowingUp(false);
       setIsLoading(false);
     }
   };
@@ -674,7 +679,7 @@ export default function SelfAnalysisApp() {
                   </div>
                 ) : (
                   <>
-                    {!followUp && (
+                    {!followUp && !isFollowingUp && (
                       <>
                         <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
                         <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
@@ -683,6 +688,12 @@ export default function SelfAnalysisApp() {
                         </div>
                       </>
                     )}
+                    {isFollowingUp && !followUp && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '32px 0' }}>
+                        <span style={{ color: C.gold }}>·</span>
+                        <span style={{ fontSize: '13px' }}>読んでいます...</span>
+                      </div>
+                    )}
                     {followUp && (
                       <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
                         <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>もう少しだけ</p>
@@ -690,7 +701,7 @@ export default function SelfAnalysisApp() {
                       </div>
                     )}
                     <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
-                    {!followUp && (
+                    {!followUp && !isFollowingUp && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
                         <input type="text" value={insight} onChange={e => setInsight(e.target.value)} placeholder="気づいた一文を..." style={{ width: '100%', padding: '10px 14px', background: 'transparent', border: `1px solid ${C.border}`, borderRadius: '6px', color: C.muted, fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }} />
