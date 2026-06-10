@@ -33,19 +33,29 @@ export default async function handler(req, res) {
 - 2：回避・一般論・短い
 - 1：「わからない」「ない」「普通」レベル
 
-スコアが3以下の場合のみ深掘り質問を1文返す。
-スコアが4以上の場合は「十分です」とだけ返す。
+スコアが3以下の場合のみ深掘り質問を1文作る。
+スコアが4以上の場合はreplyを「十分です」にする。
 深掘りする場合のルール：
 - 前の深掘りと同じ角度・言い回しで聞かない
 - 新しいテーマを出さない
 - 回答の中で一番感情が動いていそうな言葉を1つ拾ってそこだけを掘る
 - 圧をかけていい
-- 1文のみ`;
+- 1文のみ
+
+必ず以下のJSON形式のみで返す。他のテキストは一切含めない。
+{"score": N, "reply": "深掘り質問 or 十分です"}`;
       const messages = conversationHistory.length > 0
         ? [...conversationHistory, { role: 'user', content: answer }]
         : [{ role: 'user', content: `質問：${question}\n回答：${answer}` }];
-      const text = await callClaude(system, messages, 50);
-      return res.json({ text });
+      const raw = await callClaude(system, messages, 150);
+      let replyText = raw;
+      let score = null;
+      try {
+        const parsed = JSON.parse(raw);
+        replyText = parsed.reply ?? raw;
+        score = parsed.score ?? null;
+      } catch {}
+      return res.json({ text: replyText, score });
     }
 
     if (type === 'reflect') {
