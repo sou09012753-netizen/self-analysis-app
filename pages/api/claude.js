@@ -23,9 +23,10 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'followup') {
-      const { question, answer, conversationHistory = [], depth = 0 } = req.body;
+      const { question, answer, conversationHistory = [], depth = 0, previousContext = '' } = req.body;
       if (depth >= 5) return res.json({ text: '十分です' });
-      const system = `あなたは世界最高峰のコーチです。
+      const contextBlock = previousContext ? `\n【前セッションの文脈（必要に応じて引用してよい）】\n${previousContext}\n` : '';
+      const system = `あなたは世界最高峰のコーチです。${contextBlock}
 まず回答の深さを1-5でスコアリングしてください。
 - 5：具体的・感情的・本音が出ている（例：「母親に認められたくて全部やってた」）
 - 4：具体的だが感情が薄い
@@ -36,6 +37,8 @@ export default async function handler(req, res) {
 スコアが3以下の場合のみ深掘り質問を1文作る。
 スコアが4以上の場合はreplyを「十分です」にする。
 深掘りする場合のルール：
+- 必ず直前の回答の中から最も感情が動いていそうな言葉や表現を1つ特定し、「〇〇とおっしゃっていましたが、」という形で接続してから問いを続ける
+- 前のセッションで出てきたキーワードがある場合は自然に引用してよい（「前回〇〇とおっしゃっていましたが、」）
 - 前の深掘りと同じ角度・言い回しで聞かない
 - 新しいテーマを出さない
 - 回答の中で一番感情が動いていそうな言葉を1つ拾ってそこだけを掘る
@@ -56,6 +59,25 @@ export default async function handler(req, res) {
         score = parsed.score ?? null;
       } catch {}
       return res.json({ text: replyText, score });
+    }
+
+    if (type === 'reframe') {
+      const { question, answer } = req.body;
+      const system = `あなたは世界最高峰のコーチです。
+クライアントが質問に対して「難しい」「わからない」「思いつかない」などと答えました。
+責めずに、別の角度から考えるきっかけを1文で提示してください。
+
+ルール：
+- 「例えばこういう角度から考えてみてください」という形で始める
+- 具体的な切り口を1つだけ提示する（過去の出来事・身近な例・感覚的な問い）
+- 説教しない・急かさない
+- 1文のみ
+- 必ず以下のJSON形式のみで返す。他のテキストは一切含めない。
+{"reply": "別角度の問いかけ"}`;
+      const raw = await callClaude(system, [{ role: 'user', content: `質問：${question}\nクライアントの回答：${answer}` }], 150);
+      let replyText = raw;
+      try { replyText = JSON.parse(raw).reply ?? raw; } catch {}
+      return res.json({ text: replyText });
     }
 
     if (type === 'reflect') {
@@ -141,7 +163,7 @@ export default async function handler(req, res) {
 
       if (sessionNumber === 2) {
         const s1 = previousSummaries.find(s => s.sessionNumber === 1);
-        system = `あなたは世界最高峰のコーチです。SESSION 2のヒアリング結果をもとに、${userName}さんへ3ブロック構成のフィードバックを書いてください。${s1 ? `\n【SESSION 1で見えてきたこと（参考）】\n${s1.summary}\n` : ''}${toneRules}
+        system = `あなたは世界最高峰のコーチです。SESSION 2のヒアリング結果をもとに、${userName}さんへ3ブロック構成のフィードバックを書いてください。${s1 ? `\n【SESSION 1で見えてきたこと（必ず引用すること）】\nSESSION 1では以下のことが明らかになっています。今回のフィードバックでは「前回〇〇とおっしゃっていましたが」という形で自然に引用してください。\n${s1.summary}\n` : ''}${toneRules}
 
 出力形式（マークダウン）：
 
@@ -204,7 +226,7 @@ export default async function handler(req, res) {
       if (sessionNumber === 3) {
         const s1 = previousSummaries.find(s => s.sessionNumber === 1);
         const s2 = previousSummaries.find(s => s.sessionNumber === 2);
-        system = `あなたは世界最高峰のコーチです。3回のセッションを締めくくるフィードバックを、${userName}さんへ3ブロック構成で書いてください。${s1 ? `\n【SESSION 1で見えてきたこと】\n${s1.summary}\n` : ''}${s2 ? `\n【SESSION 2で見えてきたこと】\n${s2.summary}\n` : ''}${toneRules}最後だから、少しだけ前を向ける言葉を入れていい。ただし薄い励ましは要らない。本当のことだけ書く。
+        system = `あなたは世界最高峰のコーチです。3回のセッションを締めくくるフィードバックを、${userName}さんへ3ブロック構成で書いてください。${s1 ? `\n【SESSION 1で見えてきたこと（必ず引用すること）】\n${s1.summary}\n` : ''}${s2 ? `\n【SESSION 2で見えてきたこと（必ず引用すること）】\n${s2.summary}\n` : ''}${toneRules}最後だから、少しだけ前を向ける言葉を入れていい。ただし薄い励ましは要らない。本当のことだけ書く。各セッションで出てきたキーワードを「SESSION 1では〇〇と言っていましたね」「SESSION 2で見えた〇〇が」という形で自然に接続してください。
 
 出力形式（マークダウン）：
 

@@ -25,6 +25,7 @@ export const SESSIONS = [
     title: '今の自分を解剖する',
     subtitle: '現在地を正直に見る',
     cardName: 'あなたの「動き出す理由」カード',
+    goal: '自分が何を大切にしているか、何に引っかかりを感じているかを言語化します。正解はありません。思ったままを書いてください。',
     phases: [
       {
         title: 'モヤモヤの輪郭を取る',
@@ -39,15 +40,15 @@ export const SESSIONS = [
         title: '過去から現在を読む',
         questions: [
           '親に「ありがとう」と直接言ったことはありますか。言えたか、言えなかったか。言えなかったとしたら、なぜですか。',
-          '子どもの頃、「本気でやめたいのに続けたこと」はありますか。その時、自分を動かしていたのは何でしたか。',
-          'これまでの人生で「続けられると思っていたのにやめたこと」があります。やめた瞬間、自分に何と言い訳しましたか。正直に。',
+          '子どもの頃、「本気でやめたいのに続けたこと」はありますか。その時、自分を動かしていたのは何でしたか。例）習い事、部活、家族の期待など',
+          'これまでの人生で「続けられると思っていたのにやめたこと」は何ですか。やめた瞬間、自分に何と言い訳しましたか。正直に。',
         ],
       },
       {
         title: '承認と動機の核心',
         questions: [
-          '誰かに褒められた時と、自分で「できた」と感じた時、どちらの方が長く自分の中に残りますか。',
-          '一生誰にも結果を見せられない、評価されない条件でも、今やっていることを続けますか。続けないとしたら、それはあなたにとって何を意味しますか。',
+          '誰かに褒められた時と、自分で「できた」と感じた時、どちらの満足感が長く続きますか。どちらが強いか正直に。',
+          '一生誰にも見せられない、評価されない条件でも、今やっていることを続けますか。続けないとしたら、それは何を意味すると思いますか。',
         ],
       },
     ],
@@ -57,18 +58,19 @@ export const SESSIONS = [
     title: '止まっている理由を特定する',
     subtitle: '動けない本当の理由を見つける',
     cardName: 'あなたの「動き方のクセ」カード',
+    goal: '同じパターンを繰り返してしまう理由を掘り下げます。なぜ動けないのか、本音で向き合ってください。',
     phases: [
       {
         title: '本音の孤立',
         questions: [
-          '今、自分が本当にやろうとしていることを、全部正直に話せる人間が何人いますか。',
-          'その人たちにも話せていないことがあるとしたら、理由は何ですか。「否定されるから」以外の理由があるとしたら。',
+          '今、自分が本当にやろうとしていることを、全部正直に話せる人間が何人いますか。具体的な人数で答えてください。',
+          'その人たちにも話せていないことがあるとしたら、なぜですか。「否定されるから」以外の理由で考えてみてください。',
         ],
       },
       {
         title: '回避パターン',
         questions: [
-          '何かから逃げた後、必ずやることがあります。それは何ですか。（例：走る、寝る、スマホを見る、食べる）',
+          '何かから逃げた後、必ずやることがあります。それは何ですか。例）走る、寝る、スマホを見る、食べる、掃除する',
           'その行動をしている時、何を感じていますか。逃げた罪悪感ですか、一時的な安堵ですか、それとも別の何かですか。',
           '今、一番先送りにしていることは何ですか。なぜ今日やらないのか、本当の理由を正直に書いてください。',
         ],
@@ -76,8 +78,8 @@ export const SESSIONS = [
       {
         title: '矛盾を直視する',
         questions: [
-          '「〇〇したい」と思っているのに、実際の行動と一致していないことがあります。その矛盾に気づいていますか。何が邪魔していると思いますか。',
-          'これまでの人生で「逃げた」と今も後悔している選択が一つあるとしたら、それは何ですか。',
+          '「〇〇したい」と思っているのに、実際の行動が伴っていないことはありますか。その矛盾に気づいていますか。何が邪魔していると思いますか。',
+          'これまでの人生で、今も「逃げた」と後悔している選択が一つあるとしたら、それは何ですか。',
         ],
       },
     ],
@@ -87,26 +89,27 @@ export const SESSIONS = [
     title: '次の一手を決める',
     subtitle: 'ビジョンではなく、今週の行動まで落とす',
     cardName: 'あなたの「自分軸」カード',
+    goal: '3回のセッションで見えてきたことを使って、本物の自分軸を言語化します。ビジョンではなく、今週動ける一手まで落としてください。',
     phases: [
       {
         title: '死ぬ前の後悔',
         questions: [
-          '80歳で死ぬ直前、「あの時こうしておけばよかった」と後悔するとしたら、それは何ですか。「お金を稼げばよかった」以外で答えてください。',
+          '80歳で死ぬ直前、「あの時こうしておけばよかった」と後悔するとしたら、それは何ですか。お金・地位以外で答えてください。',
         ],
       },
       {
         title: '本物の動機',
         questions: [
           '今一番熱量がある「やりたいこと」の、本当の理由は何ですか。誰かに認められたいのか、自分が満たされたいのか、誰かを守りたいのか。正直に。',
-          'もしその「やりたいこと」が永遠に誰にも評価されないとわかっていても、やり続けますか。',
+          'もしその「やりたいこと」が永遠に誰にも評価されないとわかっていても、やり続けますか。やめるとしたら、それはなぜですか。',
         ],
       },
       {
         title: '軸を言語化する',
         questions: [
-          'SESSION 1から今日まで、一番「そうだった」と腑に落ちた瞬間はいつですか。',
+          'SESSION 1から今日まで、一番「そうだった」と腑に落ちた瞬間はいつですか。その時何に気づきましたか。',
           'あなたが死ぬ時に、自分の人生を一文で表すとしたら、何と書きますか。',
-          '今週、必ずやると決めることを一つだけ書いてください。期限と、やらなかった時の言い訳も一緒に書いてください。',
+          '今週、必ずやると決めることを一つだけ書いてください。いつやるか、やらなかった時の言い訳も一緒に書いてください。',
         ],
       },
     ],
@@ -353,12 +356,19 @@ export default function SelfAnalysisApp() {
     } catch {}
   };
 
+  // 困惑ワード検出
+  const isConfused = (text) => {
+    const t = text.trim();
+    return /^(難しい|わからない|わかりません|どう答えれば|どう答えたら|どう書けば|どう書いたら|思いつかない|特にない|ない|なし|わからん|むずかしい|意味がわからない|何を書けば)/.test(t) || t.length < 20 && /難し|わからな|思いつかな|特にな/.test(t);
+  };
+
   const handleSubmit = async () => {
-    if (!answer.trim() || isLoading) return;
+    if (answer.trim().length < 10 || isLoading || isFollowingUp) return;
     const cfg = SESSIONS[activeId - 1];
     const session = data.sessions[activeId];
     const saved = answer;
     setIsLoading(true);
+    setIsFollowingUp(true);
     setAnswer('');
 
     if (followUp) {
@@ -366,15 +376,18 @@ export default function SelfAnalysisApp() {
       const question = followupQuestionRef.current;
       const newAnswers = { ...session.answers, [key]: saved };
       patchSession(activeId, { answers: newAnswers });
-      setIsFollowingUp(true);
 
       try {
+        const previousContext = activeId > 1
+          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[i]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[i].summary}` : null).filter(Boolean).join('\n\n')
+          : '';
         const fu = await callAPI({
           type: 'followup',
           question,
           answer: saved,
           conversationHistory: conversationHistoryRef.current,
           depth: followupDepth,
+          previousContext,
         });
         if (fu && fu !== '十分です') {
           conversationHistoryRef.current = [
@@ -401,7 +414,7 @@ export default function SelfAnalysisApp() {
       setIsLoading(false);
     } else {
       const current = getNextQ(session, cfg);
-      if (!current) { setIsLoading(false); return; }
+      if (!current) { setIsFollowingUp(false); setIsLoading(false); return; }
       const key = `${current.phaseIdx}-${current.qIdx}`;
       const newAnswers = { ...session.answers, [key]: saved };
       const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
@@ -415,21 +428,28 @@ export default function SelfAnalysisApp() {
       try { localStorage.removeItem(DRAFT_KEY); } catch {}
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(''), 2000);
-      setIsFollowingUp(true);
 
       try {
-        const fu = await callAPI({
-          type: 'followup',
-          question: current.question,
-          answer: saved,
-          conversationHistory: [],
-          depth: 0,
-        });
+        const confused = isConfused(saved);
+        const previousContext = activeId > 1
+          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[i]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[i].summary}` : null).filter(Boolean).join('\n\n')
+          : '';
+        const fu = await callAPI(
+          confused
+            ? { type: 'reframe', question: current.question, answer: saved }
+            : {
+                type: 'followup',
+                question: current.question,
+                answer: saved,
+                conversationHistory: [],
+                depth: 0,
+                previousContext,
+              }
+        );
         if (fu && fu !== '十分です') {
-          conversationHistoryRef.current = [
-            { role: 'user', content: `質問：${current.question}\n${saved}` },
-            { role: 'assistant', content: fu },
-          ];
+          conversationHistoryRef.current = confused
+            ? [{ role: 'user', content: `質問：${current.question}\n${saved}` }, { role: 'assistant', content: fu }]
+            : [{ role: 'user', content: `質問：${current.question}\n${saved}` }, { role: 'assistant', content: fu }];
           setFollowUp(fu);
           setFollowupDepth(1);
         } else {
@@ -679,9 +699,15 @@ export default function SelfAnalysisApp() {
                   </div>
                 ) : (
                   <>
-                    {!followUp && !isFollowingUp && (
+                    {!followUp && (
                       <>
                         <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
+                        {answeredQ === 0 && cfg.goal && (
+                          <div style={{ background: '#0d0d0d', border: `1px solid ${C.border2}`, borderRadius: '8px', padding: '16px 20px', marginBottom: '28px' }}>
+                            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>このセッションについて</p>
+                            <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.8', margin: 0 }}>{cfg.goal}</p>
+                          </div>
+                        )}
                         <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.gold}`, marginBottom: '28px' }}>
                           <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '10px' }}>Q{current.qNum} / {current.phaseTotal}</p>
                           <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.8', fontWeight: '300' }}>{current.question}</p>
@@ -689,18 +715,24 @@ export default function SelfAnalysisApp() {
                       </>
                     )}
                     {isFollowingUp && !followUp && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '32px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '12px 0 28px' }}>
                         <span style={{ color: C.gold }}>·</span>
                         <span style={{ fontSize: '13px' }}>読んでいます...</span>
                       </div>
                     )}
                     {followUp && (
                       <div style={{ background: '#0d0d0d', border: `1px solid ${C.border}`, borderRadius: '8px', padding: '18px 20px', marginBottom: '24px' }}>
-                        <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>もう少しだけ</p>
+                        <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '4px' }}>もう少しだけ</p>
+                        <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.6', marginBottom: '12px' }}>その言葉の奥にあるものを知りたいので、もう少し聞かせてください。</p>
                         <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
                       </div>
                     )}
                     <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
+                    {answer.trim().length > 0 && answer.trim().length < 10 && (
+                      <p style={{ color: '#e05555', fontSize: '12px', lineHeight: '1.7', margin: '0 0 10px' }}>
+                        もう少し詳しく書いてください。具体的な言葉があるほど、より深いフィードバックができます。
+                      </p>
+                    )}
                     {!followUp && !isFollowingUp && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>
@@ -708,7 +740,7 @@ export default function SelfAnalysisApp() {
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <button onClick={handleSubmit} disabled={!answer.trim() || isLoading} style={goldBtn(!!answer.trim() && !isLoading, { flex: 1 })}>{isLoading ? '読んでいます...' : '回答する'}</button>
+                      <button onClick={handleSubmit} disabled={answer.trim().length < 10 || isLoading} style={goldBtn(answer.trim().length >= 10 && !isLoading, { flex: 1 })}>{isLoading ? '読んでいます...' : '回答する'}</button>
                     </div>
                   </>
                 )}
@@ -720,7 +752,11 @@ export default function SelfAnalysisApp() {
                   : <button onClick={handleNext} style={goldBtn(true)}>カードを生成する</button>}
               </div>
             )}
-            <button onClick={goToSessionSelect} style={ghostBtn({ width: '100%', marginTop: '16px', fontSize: '11px' })}>← セッション選択に戻る（進捗は保存済み）</button>
+            <button
+              onClick={goToSessionSelect}
+              disabled={isLoading || isFollowingUp}
+              style={ghostBtn({ width: '100%', marginTop: '16px', fontSize: '11px', ...(isLoading || isFollowingUp ? { opacity: 0.3, cursor: 'not-allowed' } : {}) })}
+            >← セッション選択に戻る（進捗は保存済み）</button>
           </div>
         </div>
       </>
