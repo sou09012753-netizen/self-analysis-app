@@ -147,7 +147,7 @@ const getNextQ = (session, cfg) => {
   return null;
 };
 
-const defaultSession = () => ({ status: 'not_started', answers: {}, insights: {}, summary: '', completedAt: null });
+const defaultSession = () => ({ status: 'not_started', answers: {}, insights: {}, summary: '', completedAt: null, workSubmitted: false });
 const defaultData = (name) => ({
   userName: name,
   activeSessionId: null,
@@ -227,6 +227,10 @@ export default function SelfAnalysisApp() {
   const [onelineText, setOnelineText]   = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
+  const [workContent, setWorkContent]   = useState(null);
+  const [workAnswer, setWorkAnswer]     = useState('');
+  const [isGeneratingWork, setIsGeneratingWork] = useState(false);
+  const [isSavingWork, setIsSavingWork] = useState(false);
   const saveTimer = useRef(null);
   const dbSaveTimer = useRef(null);
   const userIdRef = useRef(null);
@@ -304,6 +308,7 @@ export default function SelfAnalysisApp() {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     conversationHistoryRef.current = [];
     setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
+    setWorkContent(null); setWorkAnswer('');
     setView('session-select');
   };
 
@@ -559,6 +564,39 @@ export default function SelfAnalysisApp() {
 
   const exportFilename = (sid) => `${data.userName}_SESSION${sid}_${(data.sessions[sid]?.completedAt ? new Date(data.sessions[sid].completedAt) : new Date()).toISOString().slice(0,10).replace(/-/g,'')}.txt`;
 
+  const handleGoToWork = async (sessionId) => {
+    setWorkContent(null); setWorkAnswer(''); setIsGeneratingWork(true);
+    setView('session-work');
+    try {
+      const summary = data.sessions[sessionId].summary;
+      const res = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'work', sessionNumber: sessionId, summary }),
+      });
+      const json = await res.json();
+      setWorkContent(json.work || null);
+    } catch {}
+    setIsGeneratingWork(false);
+  };
+
+  const handleSaveWork = async (sessionId) => {
+    if (!workContent || isSavingWork) return;
+    setIsSavingWork(true);
+    const workText = [workContent.work, workContent.reason, workContent.timing, workContent.record].filter(Boolean).join('\n');
+    try {
+      await fetch('/api/db/work', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
+        body: JSON.stringify({ session_no: sessionId, work_text: workText, response_text: workAnswer.trim() || null }),
+      });
+      patchSession(sessionId, { workSubmitted: true });
+      setWorkContent(null); setWorkAnswer('');
+      setView('session-select');
+    } catch {}
+    setIsSavingWork(false);
+  };
+
   const allDone = data && [1,2,3].every(i => data.sessions[i].status === 'completed');
 
   if (authChecking) return null;
@@ -614,7 +652,8 @@ export default function SelfAnalysisApp() {
               {SESSIONS.map(cfg => {
                 const id = cfg.id;
                 const session = data.sessions[id];
-                const locked = id !== 1 && data.sessions[id - 1].status !== 'completed';
+                const prevSession = data.sessions[id - 1];
+                const locked = id !== 1 && !(prevSession.status === 'completed' && prevSession.workSubmitted);
                 const info = statusInfo(session);
                 const totalQ = getTotalQ(cfg);
                 const answeredQ = Object.keys(session.answers).length;
@@ -805,7 +844,12 @@ export default function SelfAnalysisApp() {
             </div>
             {!isSummarizing && !summaryError && (
               <div style={{ display: 'flex', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
-                <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>
+                {activeId < 3 && !data.sessions[activeId]?.workSubmitted
+                  ? <button onClick={() => handleGoToWork(activeId)} style={goldBtn(true)}>次回までのワークを確認する →</button>
+                  : <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>}
+                {activeId === 3 && (
+                  <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>
+                )}
                 {allDone && !data.integratedDoc && <button onClick={handleGenerate} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>統合ドキュメントを生成する</button>}
                 {allDone && data.integratedDoc && <button onClick={() => setView('final-document')} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>分身ドキュメントを見る</button>}
                 <button onClick={() => navigator.clipboard?.writeText(tabs[summaryTab]?.content || '')} style={ghostBtn()}>コピー</button>
@@ -820,6 +864,70 @@ export default function SelfAnalysisApp() {
                 </div>
                 <h4 style={{ color: C.text, fontSize: '15px', fontWeight: '300', margin: '0 0 10px' }}>{nextPreview.title}</h4>
                 <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.8', margin: 0 }}>{nextPreview.body}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (view === 'session-work') {
+    return (
+      <>
+        <Head><title>次回までのワーク — SESSION {activeId}</title></Head>
+        <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '48px 20px 80px' }}>
+          <div style={{ maxWidth: '580px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
+              <div style={{ width: '32px', height: '1px', background: C.gold }} />
+              <span style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em' }}>NEXT SESSION WORK</span>
+            </div>
+            <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', marginBottom: '8px' }}>次回までのワーク</h2>
+            <p style={{ color: C.dim, fontSize: '12px', marginBottom: '32px' }}>SESSION {activeId}の気づきをもとに、次のセッションまで取り組むことです。</p>
+            {isGeneratingWork ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '40px 0' }}>
+                <span style={{ color: C.gold }}>·</span>
+                <span style={{ fontSize: '13px' }}>ワークを設計しています...</span>
+              </div>
+            ) : workContent ? (
+              <>
+                <div style={{ background: C.surface, border: `1px solid ${C.gold}33`, borderRadius: '8px', padding: '28px 32px', marginBottom: '28px' }}>
+                  <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '16px' }}>取り組むこと</p>
+                  <p style={{ color: C.text, fontSize: '17px', lineHeight: '1.8', fontWeight: '300', marginBottom: '20px' }}>{workContent.work}</p>
+                  {workContent.reason && (
+                    <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.7', marginBottom: '10px' }}>
+                      <span style={{ color: C.dim, fontSize: '11px' }}>なぜこれか　</span>{workContent.reason}
+                    </p>
+                  )}
+                  {workContent.timing && (
+                    <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.7', marginBottom: '10px' }}>
+                      <span style={{ color: C.dim, fontSize: '11px' }}>いつやるか　</span>{workContent.timing}
+                    </p>
+                  )}
+                  {workContent.record && (
+                    <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.7' }}>
+                      <span style={{ color: C.dim, fontSize: '11px' }}>記録方法　　</span>{workContent.record}
+                    </p>
+                  )}
+                </div>
+                <p style={{ color: C.dim, fontSize: '12px', marginBottom: '10px' }}>取り組みに対して一言（任意）</p>
+                <textarea
+                  value={workAnswer}
+                  onChange={e => setWorkAnswer(e.target.value)}
+                  placeholder="やります / 正直きつい / でもやってみます... など"
+                  rows={3}
+                  style={{ width: '100%', padding: '16px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '14px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '20px' }}
+                />
+                <button
+                  onClick={() => handleSaveWork(activeId)}
+                  disabled={isSavingWork}
+                  style={goldBtn(!isSavingWork, { width: '100%', padding: '16px', fontSize: '14px' })}
+                >{isSavingWork ? '保存中...' : 'コミットして次のセッションへ進む'}</button>
+              </>
+            ) : (
+              <div style={{ padding: '20px 0' }}>
+                <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '16px' }}>生成に失敗しました</p>
+                <button onClick={() => handleGoToWork(activeId)} style={goldBtn(true)}>もう一度試す</button>
               </div>
             )}
           </div>
