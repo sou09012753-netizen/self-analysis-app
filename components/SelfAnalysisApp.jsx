@@ -800,7 +800,7 @@ export default function SelfAnalysisApp() {
                   </div>
                 ) : (
                   <>
-                    {!followUp && (
+                    {!followUp && !isFollowingUp && (
                       <>
                         <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', marginBottom: '32px' }}>{current.phase.title}</p>
                         {answeredQ === 0 && cfg.goal && (
@@ -829,11 +829,6 @@ export default function SelfAnalysisApp() {
                       </div>
                     )}
                     <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
-                    {answer.trim().length > 0 && answer.trim().length < 10 && (
-                      <p style={{ color: '#e05555', fontSize: '12px', lineHeight: '1.7', margin: '0 0 10px' }}>
-                        もう少し詳しく書いてください。具体的な言葉があるほど、より深いフィードバックができます。
-                      </p>
-                    )}
                     {!followUp && !isFollowingUp && (
                       <div style={{ marginBottom: '14px' }}>
                         <p style={{ color: C.dim, fontSize: '11px', letterSpacing: '0.08em', margin: '0 0 6px' }}>この質問で気づいたことを一文で（任意）</p>

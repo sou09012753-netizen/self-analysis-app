@@ -1,6 +1,8 @@
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
 
+const stripFences = (s) => s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+
 const callClaude = async (system, messages, maxTokens) => {
   const res = await fetch(ANTHROPIC_API, {
     method: 'POST',
@@ -62,7 +64,7 @@ ${depthAngle}
       let replyText = raw;
       let score = null;
       try {
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(stripFences(raw));
         replyText = parsed.reply ?? raw;
         score = parsed.score ?? null;
       } catch {}
@@ -311,7 +313,7 @@ ${depthAngle}
 - cautionは空欄にしない。「特になし」も書かない。必ず何か1つ特定する`;
       const raw = await callClaude(system, [{ role: 'user', content: `質問：${question}\n\n${userName}さんの回答：${answer}` }], 200);
       let parsed = null;
-      try { parsed = JSON.parse(raw); } catch {}
+      try { parsed = JSON.parse(stripFences(raw)); } catch {}
       return res.json({ script: parsed || { summary: raw, script: '', caution: '' } });
     }
 
@@ -330,7 +332,7 @@ ${depthAngle}
 {"work": "具体的なワーク内容（何をするか）", "reason": "なぜこれか（本人の言葉を引用）", "timing": "いつやるか", "record": "記録方法"}`;
       const raw = await callClaude(system, [{ role: 'user', content: summary }], 300);
       let parsed = null;
-      try { parsed = JSON.parse(raw); } catch {}
+      try { parsed = JSON.parse(stripFences(raw)); } catch {}
       return res.json({ work: parsed || { work: raw, reason: '', timing: '今週中に', record: '日記に記録する' } });
     }
 
