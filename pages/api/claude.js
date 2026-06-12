@@ -298,6 +298,23 @@ ${depthAngle}
       return res.json({ text });
     }
 
+    if (type === 'coachscript') {
+      const { question, answer, userName } = req.body;
+      const system = `あなたはコーチングの達人です。クライアント（${userName}さん）がセッション中に今の質問に答えました。コーチが次の一言を言うための台本を作ってください。
+
+出力形式（JSON、他のテキスト一切禁止）：
+{"summary": "回答の要点（1行・30文字以内）", "script": "コーチが今すぐ言うべきセリフ（1〜2文。「〜ですね」「〜だったんですね」で自然に始まる）", "caution": "注意すべき地雷ワード・触れてはいけないテーマ（1行）"}
+
+ルール：
+- scriptは評価しない・褒めない。見えているものをそのまま届ける
+- scriptは回答の中の具体的な言葉を必ず1つ引用する
+- cautionは空欄にしない。「特になし」も書かない。必ず何か1つ特定する`;
+      const raw = await callClaude(system, [{ role: 'user', content: `質問：${question}\n\n${userName}さんの回答：${answer}` }], 200);
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch {}
+      return res.json({ script: parsed || { summary: raw, script: '', caution: '' } });
+    }
+
     if (type === 'work') {
       const { sessionNumber, summary } = req.body;
       const system = `あなたは世界最高峰のコーチです。SESSION ${sessionNumber}のサマリーから「次回までのワーク」を1つだけ設計してください。
