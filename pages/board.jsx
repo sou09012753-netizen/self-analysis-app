@@ -95,7 +95,7 @@ export default function SenBoard() {
 【今週の優先課題】
 ・SEN BOARDを毎朝1議題叩く習慣を始める
 ・スケ・さとな・なのかに自己分析アプリを入力させる（仙石が指示）
-・農業ECの具体的な次の一手を壁打ちで決める`
+・農業ECの具体的な次の一手を壁打ちで決める
 4. 顧客ステータスの自動更新`);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -264,5 +264,3 @@ export default function SenBoard() {
     </div>
   );
 }
-cd ~/projects/self-analysis-app
-claude
