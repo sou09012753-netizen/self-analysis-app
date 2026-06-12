@@ -24,9 +24,25 @@ export default async function handler(req, res) {
   try {
     if (type === 'followup') {
       const { question, answer, conversationHistory = [], depth = 0, previousContext = '' } = req.body;
-      if (depth >= 5) return res.json({ text: '十分です' });
+      if (depth >= 3) return res.json({ text: '十分です' });
       const contextBlock = previousContext ? `\n【前セッションの文脈（必要に応じて引用してよい）】\n${previousContext}\n` : '';
+      const depthAngle = depth === 0
+        ? '【角度：事実の特定】何が起きたか・どんな場面だったかを具体的に絞り込む。「〇〇という言葉が出ましたが、それは具体的にどんな状況でしたか」という形で特定する。'
+        : depth === 1
+        ? '【角度：感情の根っこ】その出来事・状況でどんな感情が動いたか、その感情はどこから来ているかを掘る。'
+        : '【角度：構造・パターンの指摘】「それ、前にもあったパターンでは？」「いつもこうなりますか？」という角度で繰り返しの構造を指摘する。';
       const system = `あなたは世界最高峰のコーチです。${contextBlock}
+
+${depthAngle}
+
+【絶対ルール】
+1. 直前の回答から最も感情が動いていそうな具体的な単語・フレーズを1つ特定し、それをそのまま引用してから問いを作る（例：「〇〇という言葉が出ましたが、」「〇〇と言われていましたね、」）
+2. 抽象的な聞き返し禁止：「それはなぜですか」「どう思いますか」「どう感じますか」「もう少し詳しく」「そのことについて教えてください」は使わない
+3. 主語を「あなた」にしない。引用した言葉を主語・出発点にする
+4. 1文のみ。圧をかけていい。遠慮しない
+5. 前の深掘りと同じ角度・言い回しで聞かない
+6. 新しいテーマを出さない
+
 まず回答の深さを1-5でスコアリングしてください。
 - 5：具体的・感情的・本音が出ている（例：「母親に認められたくて全部やってた」）
 - 4：具体的だが感情が薄い
@@ -34,23 +50,15 @@ export default async function handler(req, res) {
 - 2：回避・一般論・短い
 - 1：「わからない」「ない」「普通」レベル
 
-スコアが3以下の場合のみ深掘り質問を1文作る。
+スコアが3以下の場合のみ上記ルールで深掘り質問を1文作る。
 スコアが4以上の場合はreplyを「十分です」にする。
-深掘りする場合のルール：
-- 必ず直前の回答の中から最も感情が動いていそうな言葉や表現を1つ特定し、「〇〇とおっしゃっていましたが、」という形で接続してから問いを続ける
-- 前のセッションで出てきたキーワードがある場合は自然に引用してよい（「前回〇〇とおっしゃっていましたが、」）
-- 前の深掘りと同じ角度・言い回しで聞かない
-- 新しいテーマを出さない
-- 回答の中で一番感情が動いていそうな言葉を1つ拾ってそこだけを掘る
-- 圧をかけていい
-- 1文のみ
 
 必ず以下のJSON形式のみで返す。他のテキストは一切含めない。
 {"score": N, "reply": "深掘り質問 or 十分です"}`;
       const messages = conversationHistory.length > 0
         ? [...conversationHistory, { role: 'user', content: answer }]
         : [{ role: 'user', content: `質問：${question}\n回答：${answer}` }];
-      const raw = await callClaude(system, messages, 150);
+      const raw = await callClaude(system, messages, 200);
       let replyText = raw;
       let score = null;
       try {
