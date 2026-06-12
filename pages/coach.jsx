@@ -22,6 +22,28 @@ const ghost = (extra = {}) => ({
   color: C.dim, fontSize: '11px', cursor: 'pointer', fontFamily: C.font, ...extra,
 });
 
+const renderMd = (text) => {
+  if (!text) return null;
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('# '))   return <h2 key={i} style={{ color: C.text, fontSize: '18px', fontWeight: '300', margin: '0 0 20px' }}>{line.slice(2)}</h2>;
+    if (line.startsWith('## '))  return <h3 key={i} style={{ color: C.text, fontSize: '14px', fontWeight: '500', margin: '24px 0 12px', borderBottom: `1px solid ${C.border}`, paddingBottom: '6px' }}>{line.slice(3)}</h3>;
+    if (line.startsWith('### ')) return <h4 key={i} style={{ color: C.gold, fontSize: '11px', letterSpacing: '0.15em', margin: '16px 0 8px', fontWeight: '400' }}>{line.slice(4)}</h4>;
+    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '5px 0', lineHeight: '1.9' }}>{line}</p>;
+    if (line.startsWith('- '))   return <p key={i} style={{ color: '#bbb', fontSize: '13px', margin: '4px 0', lineHeight: '1.9', display: 'flex', gap: '8px' }}><span style={{ color: C.gold, flexShrink: 0 }}>·</span>{line.slice(2)}</p>;
+    if (line.match(/^\*\*(.+?)：\*\*\s*(.*)/)) {
+      const [, label, rest] = line.match(/^\*\*(.+?)：\*\*\s*(.*)/);
+      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '6px 0', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{rest}</p>;
+    }
+    if (line.match(/^\*\*(.+?):\*\*\s*(.*)/)) {
+      const [, label, rest] = line.match(/^\*\*(.+?):\*\*\s*(.*)/);
+      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '6px 0', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{rest}</p>;
+    }
+    if (line === '---') return <div key={i} style={{ height: '1px', background: C.border, margin: '20px 0' }} />;
+    if (!line.trim())  return <div key={i} style={{ height: '5px' }} />;
+    return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '3px 0', lineHeight: '1.9' }}>{line}</p>;
+  });
+};
+
 const SESSIONS_MAP = {
   1: { title: '今の自分を解剖する', phases: [
     { title: 'モヤモヤの輪郭を取る', questions: ['今、頭の中にあるモヤモヤや引っかかりを、言葉にならなくていいので思いつくまま全部書いてください。','そのモヤモヤは、「自分自身への疑い」から来ていますか。それとも「周りや環境への不満・比較」から来ていますか。','そのモヤモヤが完全に消えたとして、あなたは「何ができるようになる」と思いますか。','Q1で出てきたモヤモヤの中で、一番「考えたくない」「直視したくない」と感じるものはどれですか。'] },
@@ -66,13 +88,19 @@ export default function CoachPage() {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientData, setClientData] = useState(null);
+  const [clientWorkResponses, setClientWorkResponses] = useState([]);
   const [scriptHistory, setScriptHistory] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Report states
+  const [reportText, setReportText] = useState(null); // null=loading, ''=error/empty, string=loaded
+  const [reportOpen, setReportOpen] = useState(true);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [reportUpdatedAt, setReportUpdatedAt] = useState(null);
+
   const passcodeRef = useRef('');
   const lastAnswerKeyRef = useRef(null);
   const pollTimerRef = useRef(null);
-
-  const apiHeaders = { 'x-coach-passcode': passcodeRef.current };
 
   const loadClients = async (pc) => {
     const r = await fetch('/api/admin/coach-data?action=clients', { headers: { 'x-coach-passcode': pc } });
@@ -124,20 +152,89 @@ export default function CoachPage() {
     } catch {}
   };
 
+  const saveReport = async (clientId, text) => {
+    try {
+      await fetch('/api/admin/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: clientId, reportText: text }),
+      });
+      setReportUpdatedAt(new Date().toISOString());
+    } catch {}
+  };
+
+  const doGenerateReport = async (clientId, userName, sessionData, workResponses) => {
+    setIsGeneratingReport(true);
+    try {
+      const r = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'report', userName, sessionData, workResponses }),
+      });
+      const json = await r.json();
+      const text = json.text || '';
+      setReportText(text);
+      if (text) await saveReport(clientId, text);
+    } catch {
+      setReportText('');
+    }
+    setIsGeneratingReport(false);
+  };
+
+  const loadOrGenerateReport = async (clientId, userName, sessionData, workResponses) => {
+    try {
+      const r = await fetch(`/api/admin/report?userId=${clientId}`, {
+        headers: { 'x-coach-passcode': passcodeRef.current },
+      });
+      const json = await r.json();
+      if (json.report) {
+        setReportText(json.report.report_text);
+        setReportUpdatedAt(json.report.updated_at);
+        return;
+      }
+      await doGenerateReport(clientId, userName, sessionData, workResponses);
+    } catch {
+      setReportText('');
+    }
+  };
+
   const handleSelectClient = (client) => {
     setSelectedClient(client);
     setScriptHistory([]);
     setClientData(null);
+    setClientWorkResponses([]);
+    setReportText(null);
+    setReportUpdatedAt(null);
     lastAnswerKeyRef.current = null;
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    pollClient(client.id, client.user_name);
-    pollTimerRef.current = setInterval(() => pollClient(client.id, client.user_name), 5000);
     setPhase('session');
+
+    (async () => {
+      try {
+        const r = await fetch(`/api/admin/coach-data?action=answers&userId=${client.id}`, {
+          headers: { 'x-coach-passcode': passcodeRef.current },
+        });
+        const json = await r.json();
+        if (!json.client) return;
+        const sessionData = json.client.session_data;
+        const workResponses = json.client.work_responses || [];
+        setClientData(sessionData);
+        setClientWorkResponses(workResponses);
+        const entry = getLatestAnswerEntry(sessionData);
+        const entryKey = entry ? `${entry.sessionId}-${entry.key}` : null;
+        lastAnswerKeyRef.current = entryKey;
+        if (entry) generateScript(entry, client.user_name);
+        await loadOrGenerateReport(client.id, client.user_name, sessionData, workResponses);
+      } catch {}
+    })();
+
+    pollTimerRef.current = setInterval(() => pollClient(client.id, client.user_name), 5000);
   };
 
   const handleBack = () => {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setSelectedClient(null); setClientData(null); setScriptHistory([]);
+    setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
     lastAnswerKeyRef.current = null;
     setPhase('clients');
   };
@@ -192,6 +289,60 @@ export default function CoachPage() {
   if (phase === 'session') {
     const latest = clientData ? getLatestAnswerEntry(clientData) : null;
     const current = scriptHistory[0];
+
+    const reportSection = (
+      <div style={{ border: `1px solid #2a2200`, borderRadius: '8px', marginBottom: '32px', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ background: '#0e0b00', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>診断レポート</p>
+            {reportUpdatedAt && (
+              <span style={{ color: C.dim, fontSize: '10px' }}>
+                {new Date(reportUpdatedAt).toLocaleDateString('ja-JP')} 生成
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {reportText && !isGeneratingReport && (
+              <button
+                onClick={() => doGenerateReport(selectedClient.id, selectedClient.user_name, clientData, clientWorkResponses)}
+                style={ghost({ fontSize: '10px', padding: '6px 12px', color: C.gold, borderColor: '#2a2200' })}
+              >
+                再生成
+              </button>
+            )}
+            <button
+              onClick={() => setReportOpen(o => !o)}
+              style={ghost({ fontSize: '10px', padding: '6px 12px' })}
+            >
+              {reportOpen ? '折りたたむ' : '開く'}
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        {reportOpen && (
+          <div style={{ padding: '24px 28px', background: '#080600' }}>
+            {reportText === null && !isGeneratingReport && (
+              <p style={{ color: C.dim, fontSize: '13px' }}>読み込み中...</p>
+            )}
+            {isGeneratingReport && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}>
+                <span style={{ color: C.gold }}>·</span>
+                <span style={{ fontSize: '13px' }}>レポートを生成しています（30〜60秒かかります）...</span>
+              </div>
+            )}
+            {!isGeneratingReport && reportText === '' && (
+              <p style={{ color: C.dim, fontSize: '13px' }}>レポートを生成できませんでした。再生成を試してください。</p>
+            )}
+            {!isGeneratingReport && reportText && (
+              <div>{renderMd(reportText)}</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+
     return (
       <>
         <Head><title>{selectedClient?.user_name} — コーチ台本</title></Head>
@@ -208,6 +359,12 @@ export default function CoachPage() {
                 <button onClick={handleBack} style={ghost()}>← 戻る</button>
               </div>
             </div>
+
+            {/* 診断レポート — セッション前に読む */}
+            {reportSection}
+
+            {/* ここから下はリアルタイム台本 */}
+            <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '16px' }}>リアルタイム台本</p>
 
             {latest && (
               <div style={{ background: '#0a0f0a', border: `1px solid ${C.green}22`, borderRadius: '6px', padding: '16px 20px', marginBottom: '24px' }}>

@@ -23,13 +23,12 @@ export default async function handler(req, res) {
   if (action === 'answers') {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
-    const { data, error } = await supabase
-      .from('coaching_users')
-      .select('user_name, session_data')
-      .eq('id', userId)
-      .single();
+    const [{ data, error }, { data: works }] = await Promise.all([
+      supabase.from('coaching_users').select('user_name, session_data').eq('id', userId).single(),
+      supabase.from('work_responses').select('session_no, work_text, response_text').eq('user_id', userId).order('session_no'),
+    ]);
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ client: data });
+    return res.json({ client: { ...data, work_responses: works || [] } });
   }
 
   return res.status(400).json({ error: 'Unknown action' });
