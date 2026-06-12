@@ -752,11 +752,13 @@ export default function SelfAnalysisApp() {
                   : <button onClick={handleNext} style={goldBtn(true)}>カードを生成する</button>}
               </div>
             )}
-            <button
-              onClick={goToSessionSelect}
-              disabled={isLoading || isFollowingUp}
-              style={ghostBtn({ width: '100%', marginTop: '16px', fontSize: '11px', ...(isLoading || isFollowingUp ? { opacity: 0.3, cursor: 'not-allowed' } : {}) })}
-            >← セッション選択に戻る（進捗は保存済み）</button>
+            {!reflectText && (
+              <button
+                onClick={goToSessionSelect}
+                disabled={isLoading || isFollowingUp}
+                style={ghostBtn({ width: '100%', marginTop: '16px', fontSize: '11px', ...(isLoading || isFollowingUp ? { opacity: 0.3, cursor: 'not-allowed' } : {}) })}
+              >← セッション選択に戻る（進捗は保存済み）</button>
+            )}
           </div>
         </div>
       </>
