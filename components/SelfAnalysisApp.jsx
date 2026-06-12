@@ -231,6 +231,9 @@ export default function SelfAnalysisApp() {
   const [workAnswer, setWorkAnswer]     = useState('');
   const [isGeneratingWork, setIsGeneratingWork] = useState(false);
   const [isSavingWork, setIsSavingWork] = useState(false);
+  const [workFeedback, setWorkFeedback] = useState(null);
+  const [workFeedbackAnswer, setWorkFeedbackAnswer] = useState('');
+  const [workFeedbackLoading, setWorkFeedbackLoading] = useState(false);
   const saveTimer = useRef(null);
   const dbSaveTimer = useRef(null);
   const userIdRef = useRef(null);
@@ -309,6 +312,7 @@ export default function SelfAnalysisApp() {
     conversationHistoryRef.current = [];
     setFollowUp(''); setAnswer(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
     setWorkContent(null); setWorkAnswer('');
+    setWorkFeedback(null); setWorkFeedbackAnswer('');
     setView('session-select');
   };
 
@@ -333,7 +337,7 @@ export default function SelfAnalysisApp() {
     setView('session-select');
   };
 
-  const handleSelectSession = (id) => {
+  const handleSelectSession = async (id) => {
     setActiveId(id);
     setSummaryTab(0);
     const session = data.sessions[id];
@@ -345,8 +349,27 @@ export default function SelfAnalysisApp() {
     }
     conversationHistoryRef.current = [];
     setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
+    setWorkFeedback(null); setWorkFeedbackAnswer('');
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
+
+    if ((id === 2 || id === 3) && session.status === 'not_started') {
+      try {
+        const r = await fetch(`/api/db/work?session_no=${id - 1}`, {
+          headers: { 'Authorization': `Bearer ${tokenRef.current}` },
+        });
+        const json = await r.json();
+        if (json.work?.work_text) {
+          const workSummary = json.work.work_text.split('\n')[0];
+          setWorkFeedback({
+            workText: json.work.work_text,
+            question: `前回「${workSummary}」に取り組まれたんですね。やってみてどうでしたか？`,
+            workId: json.work.id,
+          });
+        }
+      } catch {}
+    }
+
     setView('session-active');
   };
 
@@ -728,7 +751,46 @@ export default function SelfAnalysisApp() {
                 <div style={{ height: '100%', width: `${progress}%`, background: C.gold, transition: 'width 0.5s' }} />
               </div>
             </div>
-            {current ? (
+            {workFeedback && answeredQ === 0 ? (
+              <div>
+                <div style={{ background: '#0d1a0d', border: `1px solid ${C.green}33`, borderRadius: '8px', padding: '18px 22px', marginBottom: '28px' }}>
+                  <p style={{ color: C.green, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>前回のワーク確認</p>
+                  <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.7', margin: 0, whiteSpace: 'pre-wrap' }}>{workFeedback.workText}</p>
+                </div>
+                <div style={{ paddingLeft: '16px', borderLeft: `2px solid ${C.green}`, marginBottom: '28px' }}>
+                  <p style={{ color: C.text, fontSize: '17px', lineHeight: '1.8', fontWeight: '300' }}>{workFeedback.question}</p>
+                </div>
+                <textarea
+                  value={workFeedbackAnswer}
+                  onChange={e => setWorkFeedbackAnswer(e.target.value)}
+                  placeholder="正直に書いてください..."
+                  rows={4}
+                  style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '12px' }}
+                />
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={async () => {
+                      setWorkFeedbackLoading(true);
+                      try {
+                        await fetch('/api/db/work', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
+                          body: JSON.stringify({ session_no: activeId - 1, work_text: workFeedback.workText, response_text: workFeedbackAnswer.trim() || null }),
+                        });
+                      } catch {}
+                      setWorkFeedback(null); setWorkFeedbackAnswer('');
+                      setWorkFeedbackLoading(false);
+                    }}
+                    disabled={workFeedbackLoading || workFeedbackAnswer.trim().length < 5}
+                    style={goldBtn(!workFeedbackLoading && workFeedbackAnswer.trim().length >= 5, { flex: 1 })}
+                  >{workFeedbackLoading ? '保存中...' : '答えて次へ進む'}</button>
+                  <button
+                    onClick={() => { setWorkFeedback(null); setWorkFeedbackAnswer(''); }}
+                    style={ghostBtn()}
+                  >スキップ</button>
+                </div>
+              </div>
+            ) : current ? (
               <>
                 {reflectText ? (
                   <div style={{ textAlign: 'center', padding: '80px 0' }}>
