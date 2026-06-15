@@ -132,7 +132,7 @@ const csvCell = (val) => {
 const buildUserCSV = (userName, sd) => {
   const rows = [['ユーザー名', 'セッションID', 'セッション名', 'フェーズ', '質問番号', '質問', '回答', '完了日時']];
   SESSIONS.forEach((cfg) => {
-    const session = sd?.sessions?.[cfg.id];
+    const session = sd?.sessions?.[String(cfg.id)];
     if (!session) return;
     cfg.phases.forEach((phase, pi) => {
       phase.questions.forEach((q, qi) => {
@@ -153,7 +153,7 @@ const buildAllUsersCSV = (users) => {
     const sd = u.session_data;
     if (!sd) return;
     SESSIONS.forEach((cfg) => {
-      const session = sd.sessions?.[cfg.id];
+      const session = sd.sessions?.[String(cfg.id)];
       if (!session) return;
       cfg.phases.forEach((phase, pi) => {
         phase.questions.forEach((q, qi) => {
@@ -445,7 +445,7 @@ export default function AdminPage() {
                     </div>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       {SESSIONS.map((cfg) => {
-                        const s = sd?.sessions?.[cfg.id];
+                        const s = sd?.sessions?.[String(cfg.id)];
                         const info = statusLabel(s?.status ?? 'not_started');
                         return (
                           <div key={cfg.id} style={{ textAlign: 'center' }}>
@@ -471,7 +471,7 @@ export default function AdminPage() {
                 {isExpanded && (
                   <div style={{ borderTop: `1px solid ${C.border}`, padding: '20px 24px 24px' }}>
                     {SESSIONS.map((cfg) => {
-                      const session = sd?.sessions?.[cfg.id];
+                      const session = sd?.sessions?.[String(cfg.id)];
                       const sesKey = `${u.id}-${cfg.id}`;
                       const isSesExpanded = expandedSession === sesKey;
                       const totalQ = cfg.phases.reduce((a, p) => a + p.questions.length, 0);
