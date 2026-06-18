@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   // パスコードでコーチを検索
   const { data: coach, error: coachError } = await supabase
     .from('coaches')
-    .select('id, name')
+    .select('id, name, is_admin')
     .eq('passcode', passcode)
     .single();
 
@@ -41,12 +41,15 @@ export default async function handler(req, res) {
     return res.json({ user, coachName: coach.name, coachId: coach.id });
   }
 
-  // デフォルト：コーチのクライアント一覧
-  const { data: users, error: usersError } = await supabase
+  // デフォルト：コーチのクライアント一覧（is_admin は全件、それ以外は自分のクライアントのみ）
+  let query = supabase
     .from('coaching_users')
     .select('*')
-    .eq('coach_id', coach.id)
     .order('updated_at', { ascending: false });
+
+  if (!coach.is_admin) query = query.eq('coach_id', coach.id);
+
+  const { data: users, error: usersError } = await query;
 
   if (usersError) return res.status(500).json({ error: usersError.message });
 
