@@ -19,7 +19,7 @@ const getValidSession = () => {
   } catch { return null; }
 };
 
-export export const SESSIONS = [
+export const SESSIONS = [
   {
     id: 1,
     title: '今の自分を解剖する',
