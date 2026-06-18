@@ -238,12 +238,17 @@ export default function SelfAnalysisApp() {
   const dbSaveTimer = useRef(null);
   const userIdRef = useRef(null);
   const tokenRef = useRef(null);
+  const coachIdRef = useRef(null);
   const followupKeyRef = useRef(null);
   const followupQuestionRef = useRef('');
   const followupIsLastRef = useRef(false);
   const conversationHistoryRef = useRef([]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const coachParam = params.get('coach');
+    if (coachParam) coachIdRef.current = coachParam;
+
     const session = getValidSession();
     if (!session) { window.location.href = '/login'; return; }
     userIdRef.current = session.userId;
@@ -276,7 +281,7 @@ export default function SelfAnalysisApp() {
       fetch('/api/db/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
-        body: JSON.stringify({ userName: data.userName, sessionData: data }),
+        body: JSON.stringify({ userName: data.userName, sessionData: data, coachId: coachIdRef.current || null }),
       }).catch(() => {});
     }, 1000);
     return () => { if (dbSaveTimer.current) clearTimeout(dbSaveTimer.current); };
