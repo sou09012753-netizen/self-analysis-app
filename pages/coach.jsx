@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { getSupabaseClient } from '../lib/supabaseClient';
 
 const C = {
   bg: '#050505', text: '#f0ebe0', muted: '#888', dim: '#444',
@@ -107,13 +108,27 @@ export default function CoachPage() {
 
   const passcodeRef = useRef('');
   const lastAnswerKeyRef = useRef(null);
-  const pollTimerRef = useRef(null);
+  const channelRef = useRef(null);
+  const selectedClientRef = useRef(null);
 
   const loadClients = async (pc) => {
     const r = await fetch('/api/admin/coach-data?action=clients', { headers: { 'x-coach-passcode': pc } });
     if (!r.ok) throw new Error('Invalid');
     const json = await r.json();
     setClients(json.clients || []);
+  };
+
+  const setupRealtime = async () => {
+    const supabase = await getSupabaseClient();
+    const channel = supabase
+      .channel('coaching_users_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_users' }, (payload) => {
+        if (passcodeRef.current) loadClients(passcodeRef.current).catch(() => {});
+        const sc = selectedClientRef.current;
+        if (sc && payload.new?.id === sc.id) pollClient(sc.id, sc.user_name);
+      })
+      .subscribe();
+    channelRef.current = channel;
   };
 
   const handlePasscode = async () => {
@@ -123,6 +138,7 @@ export default function CoachPage() {
       passcodeRef.current = passcode;
       setPasscodeError('');
       setPhase('clients');
+      setupRealtime();
     } catch {
       setPasscodeError('パスコードが違います');
     }
@@ -207,13 +223,13 @@ export default function CoachPage() {
 
   const handleSelectClient = (client) => {
     setSelectedClient(client);
+    selectedClientRef.current = client;
     setScriptHistory([]);
     setClientData(null);
     setClientWorkResponses([]);
     setReportText(null);
     setReportUpdatedAt(null);
     lastAnswerKeyRef.current = null;
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     setPhase('session');
 
     (async () => {
@@ -235,18 +251,19 @@ export default function CoachPage() {
       } catch {}
     })();
 
-    pollTimerRef.current = setInterval(() => pollClient(client.id, client.user_name), 5000);
   };
 
   const handleBack = () => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    selectedClientRef.current = null;
     setSelectedClient(null); setClientData(null); setScriptHistory([]);
     setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
     lastAnswerKeyRef.current = null;
     setPhase('clients');
   };
 
-  useEffect(() => () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); }, []);
+  useEffect(() => () => {
+    if (channelRef.current) channelRef.current.unsubscribe();
+  }, []);
 
   if (phase === 'passcode') return (
     <>
@@ -362,7 +379,7 @@ export default function CoachPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
-                <span style={{ color: C.dim, fontSize: '11px' }}>5秒ごとに更新</span>
+                <span style={{ color: C.dim, fontSize: '11px' }}>リアルタイム更新</span>
                 <button onClick={handleBack} style={ghost()}>← 戻る</button>
               </div>
             </div>
