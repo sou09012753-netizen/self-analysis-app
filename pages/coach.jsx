@@ -379,7 +379,7 @@ export default function CoachPage() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
-                <span style={{ color: C.dim, fontSize: '11px' }}>リアルタイム更新</span>
+                <span style={{ color: C.dim, fontSize: '11px' }}>リアルタイム接続中</span>
                 <button onClick={handleBack} style={ghost()}>← 戻る</button>
               </div>
             </div>
