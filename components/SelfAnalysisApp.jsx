@@ -883,11 +883,6 @@ export default function SelfAnalysisApp() {
             </div>
             <h2 style={{ color: C.text, fontSize: '21px', fontWeight: '300', marginBottom: '6px' }}>{cfg.title}</h2>
             <p style={{ color: C.dim, fontSize: '12px', marginBottom: '32px' }}>{cfg.cardName}</p>
-            {tabs.length > 1 && !isSummarizing && (
-              <div style={{ display: 'flex', marginBottom: '20px', borderBottom: `1px solid ${C.border}` }}>
-                {tabs.map((t, i) => <button key={i} onClick={() => setSummaryTab(i)} style={{ padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: C.font, fontSize: '10px', letterSpacing: '0.1em', color: summaryTab === i ? C.gold : C.dim, borderBottom: summaryTab === i ? `2px solid ${C.gold}` : '2px solid transparent', marginBottom: '-1px', whiteSpace: 'nowrap' }}>{t.label}</button>)}
-              </div>
-            )}
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '32px 36px', minHeight: '240px', marginBottom: '24px' }}>
               {isSummarizing
                 ? (onelineText
@@ -902,7 +897,11 @@ export default function SelfAnalysisApp() {
                       <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>{summaryError}</p>
                       <button onClick={() => runCompleteSession(activeId, data.sessions[activeId].answers, data)} style={goldBtn(true)}>もう一度試す</button>
                     </div>
-                  : renderMd(tabs[summaryTab]?.content || '')}
+                  : <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                      <div style={{ width: '32px', height: '1px', background: C.gold, margin: '0 auto 24px' }} />
+                      <p style={{ color: C.text, fontSize: '17px', fontWeight: '300', lineHeight: '1.8', marginBottom: '10px' }}>コーチに送りました。</p>
+                      <p style={{ color: C.muted, fontSize: '13px' }}>セッションをお待ちください。</p>
+                    </div>}
             </div>
             {!isSummarizing && !summaryError && (
               <div style={{ display: 'flex', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
@@ -912,10 +911,6 @@ export default function SelfAnalysisApp() {
                 {activeId === 3 && (
                   <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>
                 )}
-                {allDone && !data.integratedDoc && <button onClick={handleGenerate} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>統合ドキュメントを生成する</button>}
-                {allDone && data.integratedDoc && <button onClick={() => setView('final-document')} style={goldBtn(true, { background: C.text, color: '#0a0a0a' })}>分身ドキュメントを見る</button>}
-                <button onClick={() => navigator.clipboard?.writeText(tabs[summaryTab]?.content || '')} style={ghostBtn()}>コピー</button>
-                <button onClick={() => { const sid = tabs[summaryTab]?.sessionId; if (sid) downloadText(exportFilename(sid), buildSessionText(sid)); }} style={ghostBtn()}>ダウンロード</button>
               </div>
             )}
             {!isSummarizing && !summaryError && nextPreview && (

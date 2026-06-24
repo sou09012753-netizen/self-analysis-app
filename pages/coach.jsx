@@ -97,17 +97,20 @@ export default function CoachPage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientData, setClientData] = useState(null);
   const [clientWorkResponses, setClientWorkResponses] = useState([]);
-  const [scriptHistory, setScriptHistory] = useState([]);
-  const [isGenerating, setIsGenerating] = useState(false);
 
   // Report states
-  const [reportText, setReportText] = useState(null); // null=loading, ''=error/empty, string=loaded
+  const [reportText, setReportText] = useState(null);
   const [reportOpen, setReportOpen] = useState(true);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportUpdatedAt, setReportUpdatedAt] = useState(null);
 
+  // Session questions states
+  const [sessionQuestions, setSessionQuestions] = useState(null);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [questionsOpen, setQuestionsOpen] = useState(true);
+  const [questionsUpdatedAt, setQuestionsUpdatedAt] = useState(null);
+
   const passcodeRef = useRef('');
-  const lastAnswerKeyRef = useRef(null);
   const channelRef = useRef(null);
   const selectedClientRef = useRef(null);
 
@@ -125,7 +128,7 @@ export default function CoachPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'coaching_users' }, (payload) => {
         if (passcodeRef.current) loadClients(passcodeRef.current).catch(() => {});
         const sc = selectedClientRef.current;
-        if (sc && payload.new?.id === sc.id) pollClient(sc.id, sc.user_name);
+        if (sc && payload.new?.id === sc.id) pollClient(sc.id);
       })
       .subscribe();
     channelRef.current = channel;
@@ -144,35 +147,52 @@ export default function CoachPage() {
     }
   };
 
-  const generateScript = async (entry, userName) => {
-    if (!entry || isGenerating) return;
-    setIsGenerating(true);
-    try {
-      const r = await fetch('/api/claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'coachscript', question: entry.question, answer: entry.answer, userName }),
-      });
-      const json = await r.json();
-      const s = json.script;
-      setScriptHistory(prev => [{ ...s, question: entry.question, answer: entry.answer, at: new Date().toLocaleTimeString('ja-JP') }, ...prev].slice(0, 20));
-    } catch {}
-    setIsGenerating(false);
-  };
-
-  const pollClient = async (clientId, userName) => {
+  const pollClient = async (clientId) => {
     try {
       const r = await fetch(`/api/admin/coach-data?action=answers&userId=${clientId}`, { headers: { 'x-coach-passcode': passcodeRef.current } });
       const json = await r.json();
       if (!json.client) return;
       setClientData(json.client.session_data);
-      const entry = getLatestAnswerEntry(json.client.session_data);
-      const entryKey = entry ? `${entry.sessionId}-${entry.key}` : null;
-      if (entry && entryKey !== lastAnswerKeyRef.current) {
-        lastAnswerKeyRef.current = entryKey;
-        generateScript(entry, userName);
+      setClientWorkResponses(json.client.work_responses || []);
+    } catch {}
+  };
+
+  const loadOrGenerateQuestions = async (clientId, userName, sessionData) => {
+    const hasCompleted = Object.values(sessionData?.sessions || {}).some(s => s.status === 'completed');
+    if (!hasCompleted) return;
+
+    try {
+      const r = await fetch(`/api/admin/session-questions?userId=${clientId}`, {
+        headers: { 'x-coach-passcode': passcodeRef.current },
+      });
+      const json = await r.json();
+      if (json.questions) {
+        setSessionQuestions(json.questions.questions_text);
+        setQuestionsUpdatedAt(json.questions.updated_at);
+        return;
       }
     } catch {}
+
+    setIsGeneratingQuestions(true);
+    try {
+      const r = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'sessionquestions', userName, sessionData }),
+      });
+      const json = await r.json();
+      const text = json.text || '';
+      setSessionQuestions(text);
+      setQuestionsUpdatedAt(new Date().toISOString());
+      fetch('/api/admin/session-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: clientId, questionsText: text }),
+      }).catch(() => {});
+    } catch {
+      setSessionQuestions('');
+    }
+    setIsGeneratingQuestions(false);
   };
 
   const saveReport = async (clientId, text) => {
@@ -224,12 +244,12 @@ export default function CoachPage() {
   const handleSelectClient = (client) => {
     setSelectedClient(client);
     selectedClientRef.current = client;
-    setScriptHistory([]);
     setClientData(null);
     setClientWorkResponses([]);
     setReportText(null);
     setReportUpdatedAt(null);
-    lastAnswerKeyRef.current = null;
+    setSessionQuestions(null);
+    setQuestionsUpdatedAt(null);
     setPhase('session');
 
     (async () => {
@@ -243,22 +263,72 @@ export default function CoachPage() {
         const workResponses = json.client.work_responses || [];
         setClientData(sessionData);
         setClientWorkResponses(workResponses);
-        const entry = getLatestAnswerEntry(sessionData);
-        const entryKey = entry ? `${entry.sessionId}-${entry.key}` : null;
-        lastAnswerKeyRef.current = entryKey;
-        if (entry) generateScript(entry, client.user_name);
-        await loadOrGenerateReport(client.id, client.user_name, sessionData, workResponses);
+        await Promise.all([
+          loadOrGenerateReport(client.id, client.user_name, sessionData, workResponses),
+          loadOrGenerateQuestions(client.id, client.user_name, sessionData),
+        ]);
       } catch {}
     })();
-
   };
 
   const handleBack = () => {
     selectedClientRef.current = null;
-    setSelectedClient(null); setClientData(null); setScriptHistory([]);
+    setSelectedClient(null); setClientData(null);
     setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
-    lastAnswerKeyRef.current = null;
+    setSessionQuestions(null); setQuestionsUpdatedAt(null);
     setPhase('clients');
+  };
+
+  const handleDownloadPDF = () => {
+    if (!clientData || !selectedClient) return;
+    const completedSessions = Object.entries(clientData.sessions || {})
+      .filter(([, s]) => s.status === 'completed' && s.summary)
+      .sort(([a], [b]) => Number(a) - Number(b));
+    if (completedSessions.length === 0) return;
+
+    const summaryToHtml = (text) => {
+      if (!text) return '';
+      return text.split('\n').map(line => {
+        if (line.startsWith('# '))   return `<h2 style="font-size:18px;font-weight:300;margin:0 0 16px;border-bottom:1px solid #ddd;padding-bottom:6px;">${line.slice(2)}</h2>`;
+        if (line.startsWith('## '))  return `<h3 style="font-size:14px;font-weight:500;margin:22px 0 10px;color:#111;">${line.slice(3)}</h3>`;
+        if (line.startsWith('### ')) return `<h4 style="font-size:11px;color:#888;letter-spacing:0.12em;margin:14px 0 6px;font-weight:400;">${line.slice(4)}</h4>`;
+        if (line.startsWith('- '))   return `<p style="font-size:13px;line-height:1.9;margin:3px 0;color:#333;">· ${line.slice(2).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`;
+        if (line.match(/^\d+\.\s/))  return `<p style="font-size:13px;line-height:1.9;margin:3px 0;color:#333;">${line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`;
+        if (line === '---') return '<hr style="border:none;border-top:1px solid #eee;margin:18px 0;">';
+        if (!line.trim()) return '<div style="height:5px;"></div>';
+        return `<p style="font-size:13px;line-height:1.9;margin:3px 0;color:#333;">${line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')}</p>`;
+      }).join('');
+    };
+
+    const sessionSectionTitle = { 1: '今の自分を解剖する', 2: '止まっている理由を特定する', 3: '次の一手を決める' };
+
+    const body = completedSessions.map(([sid, sess]) => {
+      const date = sess.completedAt ? new Date(sess.completedAt).toLocaleDateString('ja-JP') : '';
+      return `
+        <div style="margin-bottom:40px;">
+          <p style="font-size:11px;color:#999;letter-spacing:0.15em;margin:0 0 4px;">SESSION ${sid} · ${sessionSectionTitle[sid] || ''} · ${date}</p>
+          <hr style="border:none;border-top:2px solid #c9a84c;margin:0 0 20px;width:40px;">
+          ${summaryToHtml(sess.summary)}
+        </div>`;
+    }).join('<hr style="border:none;border-top:1px solid #ddd;margin:32px 0;">');
+
+    const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>${selectedClient.user_name} 分身シート</title>
+<style>
+  body { font-family: 'Hiragino Serif', 'Yu Mincho', 'Noto Serif JP', Georgia, serif; margin: 48px; color: #1a1a1a; }
+  @media print { body { margin: 24px; } }
+</style>
+</head><body>
+<h1 style="font-size:22px;font-weight:300;margin:0 0 4px;">${selectedClient.user_name}</h1>
+<p style="font-size:11px;color:#999;letter-spacing:0.2em;margin:0 0 36px;">分身シート</p>
+${body}
+</body></html>`;
+
+    const pw = window.open('', '_blank', 'width=900,height=700');
+    pw.document.write(html);
+    pw.document.close();
+    pw.focus();
+    setTimeout(() => { pw.print(); }, 600);
   };
 
   useEffect(() => () => {
@@ -312,145 +382,142 @@ export default function CoachPage() {
 
   if (phase === 'session') {
     const latest = clientData ? getLatestAnswerEntry(clientData) : null;
-    const current = scriptHistory[0];
-
-    const reportSection = (
-      <div style={{ border: `1px solid #2a2200`, borderRadius: '8px', marginBottom: '32px', overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ background: '#0e0b00', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>診断レポート</p>
-            {reportUpdatedAt && (
-              <span style={{ color: C.dim, fontSize: '10px' }}>
-                {new Date(reportUpdatedAt).toLocaleDateString('ja-JP')} 生成
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {reportText && !isGeneratingReport && (
-              <button
-                onClick={() => doGenerateReport(selectedClient.id, selectedClient.user_name, clientData, clientWorkResponses)}
-                style={ghost({ fontSize: '10px', padding: '6px 12px', color: C.gold, borderColor: '#2a2200' })}
-              >
-                再生成
-              </button>
-            )}
-            <button
-              onClick={() => setReportOpen(o => !o)}
-              style={ghost({ fontSize: '10px', padding: '6px 12px' })}
-            >
-              {reportOpen ? '折りたたむ' : '開く'}
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        {reportOpen && (
-          <div style={{ padding: '24px 28px', background: '#080600' }}>
-            {reportText === null && !isGeneratingReport && (
-              <p style={{ color: C.dim, fontSize: '13px' }}>読み込み中...</p>
-            )}
-            {isGeneratingReport && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}>
-                <span style={{ color: C.gold }}>·</span>
-                <span style={{ fontSize: '13px' }}>レポートを生成しています（30〜60秒かかります）...</span>
-              </div>
-            )}
-            {!isGeneratingReport && reportText === '' && (
-              <p style={{ color: C.dim, fontSize: '13px' }}>レポートを生成できませんでした。再生成を試してください。</p>
-            )}
-            {!isGeneratingReport && reportText && (
-              <div>{renderMd(reportText)}</div>
-            )}
-          </div>
-        )}
-      </div>
-    );
+    const hasCompletedSession = clientData && Object.values(clientData.sessions || {}).some(s => s.status === 'completed');
 
     return (
       <>
-        <Head><title>{selectedClient?.user_name} — コーチ台本</title></Head>
+        <Head><title>{selectedClient?.user_name} — コーチ画面</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '32px 24px 80px' }}>
           <div style={{ maxWidth: '680px', margin: '0 auto' }}>
+
+            {/* ヘッダー */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
               <div>
-                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '4px' }}>LIVE SESSION</p>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '4px' }}>COACH VIEW</p>
                 <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: 0 }}>{selectedClient?.user_name}</h2>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
-                <span style={{ color: C.dim, fontSize: '11px' }}>リアルタイム接続中</span>
+                <span style={{ color: C.dim, fontSize: '11px' }}>接続中</span>
+                {hasCompletedSession && (
+                  <button onClick={handleDownloadPDF} style={ghost({ fontSize: '10px', padding: '7px 14px', color: C.gold, borderColor: '#2a2200' })}>
+                    分身シートをダウンロード
+                  </button>
+                )}
                 <button onClick={handleBack} style={ghost()}>← 戻る</button>
               </div>
             </div>
 
-            {/* 診断レポート — セッション前に読む */}
-            {reportSection}
-
-            {/* ここから下はリアルタイム台本 */}
-            <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '16px' }}>リアルタイム台本</p>
-
-            {latest && (
-              <div style={{ background: '#0a0f0a', border: `1px solid ${C.green}22`, borderRadius: '6px', padding: '16px 20px', marginBottom: '24px' }}>
-                <p style={{ color: C.green, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '6px' }}>最新回答</p>
-                <p style={{ color: C.dim, fontSize: '11px', marginBottom: '6px' }}>SESSION {latest.sessionId} · {latest.question}</p>
-                <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.7' }}>{latest.answer}</p>
-              </div>
-            )}
-
-            {isGenerating && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim, padding: '16px 0 20px' }}>
-                <span style={{ color: C.gold }}>·</span>
-                <span style={{ fontSize: '13px' }}>台本を生成しています...</span>
-              </div>
-            )}
-
-            {current && (
-              <div style={{ background: '#0f0c00', border: `2px solid ${C.gold}44`, borderRadius: '8px', padding: '24px 28px', marginBottom: '28px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                  <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em' }}>今言うべき一言</p>
-                  <span style={{ color: C.dim, fontSize: '10px' }}>{current.at}</span>
+            {/* 診断レポート */}
+            <div style={{ border: `1px solid #2a2200`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
+              <div style={{ background: '#0e0b00', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>診断レポート</p>
+                  {reportUpdatedAt && (
+                    <span style={{ color: C.dim, fontSize: '10px' }}>{new Date(reportUpdatedAt).toLocaleDateString('ja-JP')} 生成</span>
+                  )}
                 </div>
-                {current.summary && (
-                  <p style={{ color: C.muted, fontSize: '12px', marginBottom: '12px', lineHeight: '1.6' }}>
-                    <span style={{ color: C.dim }}>要点　</span>{current.summary}
-                  </p>
-                )}
-                <p style={{ color: C.text, fontSize: '18px', lineHeight: '1.9', fontWeight: '300', marginBottom: '16px' }}>{current.script}</p>
-                {current.caution && (
-                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: '12px' }}>
-                    <p style={{ color: C.red, fontSize: '12px', lineHeight: '1.6' }}>
-                      <span style={{ fontSize: '10px', letterSpacing: '0.15em' }}>注意 　</span>{current.caution}
-                    </p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {reportText && !isGeneratingReport && (
+                    <button
+                      onClick={() => doGenerateReport(selectedClient.id, selectedClient.user_name, clientData, clientWorkResponses)}
+                      style={ghost({ fontSize: '10px', padding: '6px 12px', color: C.gold, borderColor: '#2a2200' })}
+                    >再生成</button>
+                  )}
+                  <button onClick={() => setReportOpen(o => !o)} style={ghost({ fontSize: '10px', padding: '6px 12px' })}>
+                    {reportOpen ? '折りたたむ' : '開く'}
+                  </button>
+                </div>
+              </div>
+              {reportOpen && (
+                <div style={{ padding: '24px 28px', background: '#080600' }}>
+                  {reportText === null && !isGeneratingReport && <p style={{ color: C.dim, fontSize: '13px' }}>読み込み中...</p>}
+                  {isGeneratingReport && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}>
+                      <span style={{ color: C.gold }}>·</span>
+                      <span style={{ fontSize: '13px' }}>レポートを生成しています（30〜60秒かかります）...</span>
+                    </div>
+                  )}
+                  {!isGeneratingReport && reportText === '' && <p style={{ color: C.dim, fontSize: '13px' }}>レポートを生成できませんでした。再生成を試してください。</p>}
+                  {!isGeneratingReport && reportText && <div>{renderMd(reportText)}</div>}
+                </div>
+              )}
+            </div>
+
+            {/* セッションで使える問い 3つ */}
+            {hasCompletedSession && (
+              <div style={{ border: `1px solid #1a2a1a`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
+                <div style={{ background: '#0a100a', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <p style={{ color: C.green, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>セッションで使える問い 5つ</p>
+                    {questionsUpdatedAt && (
+                      <span style={{ color: C.dim, fontSize: '10px' }}>{new Date(questionsUpdatedAt).toLocaleDateString('ja-JP')} 生成</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    {sessionQuestions && !isGeneratingQuestions && (
+                      <button
+                        onClick={async () => {
+                          setSessionQuestions(null);
+                          setQuestionsUpdatedAt(null);
+                          setIsGeneratingQuestions(true);
+                          try {
+                            const r = await fetch('/api/claude', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ type: 'sessionquestions', userName: selectedClient.user_name, sessionData: clientData }),
+                            });
+                            const json = await r.json();
+                            const text = json.text || '';
+                            setSessionQuestions(text);
+                            setQuestionsUpdatedAt(new Date().toISOString());
+                            fetch('/api/admin/session-questions', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+                              body: JSON.stringify({ userId: selectedClient.id, questionsText: text }),
+                            }).catch(() => {});
+                          } catch { setSessionQuestions(''); }
+                          setIsGeneratingQuestions(false);
+                        }}
+                        style={ghost({ fontSize: '10px', padding: '6px 12px', color: C.green, borderColor: '#1a2a1a' })}
+                      >再生成</button>
+                    )}
+                    <button onClick={() => setQuestionsOpen(o => !o)} style={ghost({ fontSize: '10px', padding: '6px 12px' })}>
+                      {questionsOpen ? '折りたたむ' : '開く'}
+                    </button>
+                  </div>
+                </div>
+                {questionsOpen && (
+                  <div style={{ padding: '24px 28px', background: '#060a06' }}>
+                    {(sessionQuestions === null || isGeneratingQuestions) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}>
+                        <span style={{ color: C.green }}>·</span>
+                        <span style={{ fontSize: '13px' }}>問いを生成しています...</span>
+                      </div>
+                    )}
+                    {!isGeneratingQuestions && sessionQuestions === '' && (
+                      <p style={{ color: C.dim, fontSize: '13px' }}>生成できませんでした。再生成を試してください。</p>
+                    )}
+                    {!isGeneratingQuestions && sessionQuestions && <div>{renderMd(sessionQuestions)}</div>}
                   </div>
                 )}
               </div>
             )}
 
-            {scriptHistory.length > 1 && (
-              <>
-                <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '14px' }}>履歴</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {scriptHistory.slice(1).map((s, i) => (
-                    <div key={i} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '16px 20px', opacity: 0.7 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <p style={{ color: C.dim, fontSize: '11px' }}>{s.question?.slice(0, 40)}...</p>
-                        <span style={{ color: C.dim, fontSize: '10px' }}>{s.at}</span>
-                      </div>
-                      {s.summary && <p style={{ color: C.muted, fontSize: '12px', marginBottom: '6px' }}>{s.summary}</p>}
-                      <p style={{ color: '#aaa', fontSize: '13px', lineHeight: '1.7' }}>{s.script}</p>
-                      {s.caution && <p style={{ color: C.red, fontSize: '11px', marginTop: '8px' }}>注意: {s.caution}</p>}
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {!latest && !isGenerating && (
-              <div style={{ textAlign: 'center', padding: '60px 0', color: C.dim }}>
+            {/* リアルタイム最新回答 */}
+            <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '14px' }}>リアルタイム最新回答</p>
+            {latest ? (
+              <div style={{ background: '#0a0f0a', border: `1px solid ${C.green}22`, borderRadius: '6px', padding: '16px 20px' }}>
+                <p style={{ color: C.green, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '6px' }}>SESSION {latest.sessionId}</p>
+                <p style={{ color: C.dim, fontSize: '11px', marginBottom: '8px' }}>{latest.question}</p>
+                <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.7' }}>{latest.answer}</p>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: C.dim }}>
                 <p style={{ fontSize: '13px' }}>クライアントの回答を待機中...</p>
               </div>
             )}
+
           </div>
         </div>
       </>
