@@ -867,13 +867,13 @@ export default function SelfAnalysisApp() {
                 )}
               </>
             ) : (
-              <div style={{ padding: '40px 0', textAlign: 'center' }}>
+              <div style={{ padding: '40px 0' }}>
                 {isSummarizing ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}><span style={{ color: C.gold }}>·</span><span style={{ fontSize: '13px' }}>カードを作っています...</span></div>
                 ) : session.unlocked ? (
                   <button onClick={handleNext} style={goldBtn(true)}>カードを生成する</button>
                 ) : (
-                  <div>
+                  <div style={{ textAlign: 'center' }}>
                     <p style={{ color: C.dim, fontSize: '13px', marginBottom: '8px', letterSpacing: '0.05em' }}>全問回答が完了しました</p>
                     <p style={{ color: '#333', fontSize: '12px', lineHeight: '1.8' }}>コーチとのセッション後、<br />カードが解放されます</p>
                   </div>

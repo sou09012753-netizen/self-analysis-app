@@ -279,6 +279,7 @@ export default function CoachPage() {
     setSelectedClient(null); setClientData(null);
     setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
     setSessionQuestions(null); setQuestionsUpdatedAt(null);
+    setUnlockingSession(null);
     setPhase('clients');
   };
 
