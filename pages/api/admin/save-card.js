@@ -1,0 +1,42 @@
+import { getSupabase } from '../../../lib/supabase';
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).end();
+
+  const passcode = req.headers['x-coach-passcode'];
+  if (!passcode || passcode !== process.env.COACH_PASSCODE) {
+    return res.status(401).json({ error: 'Invalid passcode' });
+  }
+
+  const { userId, sessionId, summary } = req.body;
+  if (!userId || !sessionId || !summary) return res.status(400).json({ error: 'Missing params' });
+
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from('coaching_users')
+    .select('session_data')
+    .eq('id', userId)
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const sessionData = data.session_data || {};
+  if (!sessionData.sessions) sessionData.sessions = {};
+  sessionData.sessions[sessionId] = {
+    ...(sessionData.sessions[sessionId] || {}),
+    status: 'completed',
+    summary,
+    completedAt: new Date().toISOString(),
+    unlocked: true,
+  };
+
+  const { error: updateError } = await supabase
+    .from('coaching_users')
+    .update({ session_data: sessionData, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+
+  if (updateError) return res.status(500).json({ error: updateError.message });
+
+  return res.json({ ok: true });
+}

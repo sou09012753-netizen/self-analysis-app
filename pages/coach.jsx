@@ -112,6 +112,7 @@ export default function CoachPage() {
 
   // Session unlock states
   const [unlockingSession, setUnlockingSession] = useState(null);
+  const [generatingCard, setGeneratingCard] = useState(null);
 
   const passcodeRef = useRef('');
   const channelRef = useRef(null);
@@ -280,7 +281,63 @@ export default function CoachPage() {
     setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
     setSessionQuestions(null); setQuestionsUpdatedAt(null);
     setUnlockingSession(null);
+    setGeneratingCard(null);
     setPhase('clients');
+  };
+
+  const handleGenerateCard = async (sessionId) => {
+    if (!selectedClient || !clientData) return;
+    setGeneratingCard(sessionId);
+    try {
+      const cfg = SESSIONS_MAP[sessionId];
+      if (!cfg) return;
+      const sess = clientData.sessions?.[sessionId] || {};
+      const answers = sess.answers || {};
+
+      const allAnswers = cfg.phases.map((phase, pi) => ({
+        phase: phase.title,
+        qa: phase.questions.map((q, qi) => ({ question: q, answer: answers[`${pi}-${qi}`] || '未回答' })),
+      }));
+
+      const previousSummaries = [];
+      for (let i = 1; i < sessionId; i++) {
+        const prev = clientData.sessions?.[i];
+        if (prev?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS_MAP[i]?.title || '', summary: prev.summary });
+      }
+
+      const r = await fetch('/api/claude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'summary', sessionNumber: sessionId, userName: selectedClient.user_name, allAnswers, previousSummaries }),
+      });
+      const json = await r.json();
+      const summary = json.text || '';
+      if (!summary) return;
+
+      await fetch('/api/admin/save-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: selectedClient.id, sessionId, summary }),
+      });
+
+      setClientData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sessions: {
+            ...prev.sessions,
+            [sessionId]: {
+              ...(prev.sessions?.[sessionId] || {}),
+              status: 'completed',
+              summary,
+              completedAt: new Date().toISOString(),
+              unlocked: true,
+            },
+          },
+        };
+      });
+    } catch {}
+    setGeneratingCard(null);
   };
 
   const handleUnlockSession = async (sessionId) => {
@@ -460,20 +517,36 @@ ${body}
                         <p style={{ color: C.dim, fontSize: '11px', marginBottom: '12px' }}>
                           {completed ? '完了' : allAnswered ? '全問記入済み' : answeredQ > 0 ? `${answeredQ}/${totalQ}問` : '未開始'}
                         </p>
-                        {completed || unlocked ? (
-                          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.08em' }}>{completed ? '完了' : '解放済み'}</p>
+                        {completed ? (
+                          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.08em' }}>完了</p>
+                        ) : allAnswered ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <button
+                              onClick={() => generatingCard === null && handleGenerateCard(id)}
+                              style={{
+                                padding: '7px 0', border: 'none', borderRadius: '4px',
+                                cursor: generatingCard !== null ? 'not-allowed' : 'pointer',
+                                fontSize: '11px', fontFamily: C.font, width: '100%',
+                                background: generatingCard === id ? '#1a1a1a' : C.gold,
+                                color: generatingCard === id ? C.dim : '#0a0a0a',
+                                opacity: generatingCard !== null && generatingCard !== id ? 0.4 : 1,
+                              }}
+                            >{generatingCard === id ? '生成中...' : 'カードを生成する'}</button>
+                            {!unlocked && (
+                              <button
+                                onClick={() => !isUnlocking && handleUnlockSession(id)}
+                                style={{
+                                  padding: '5px 0', border: `1px solid ${C.border2}`, borderRadius: '4px',
+                                  cursor: isUnlocking ? 'not-allowed' : 'pointer',
+                                  fontSize: '10px', fontFamily: C.font, width: '100%',
+                                  background: 'transparent', color: C.dim,
+                                }}
+                              >{isUnlocking ? '...' : '解放のみ'}</button>
+                            )}
+                            {unlocked && <p style={{ color: C.dim, fontSize: '10px', textAlign: 'center' }}>解放済み</p>}
+                          </div>
                         ) : (
-                          <button
-                            onClick={() => !isUnlocking && allAnswered && handleUnlockSession(id)}
-                            style={{
-                              padding: '7px 0', border: 'none', borderRadius: '4px',
-                              cursor: isUnlocking || !allAnswered ? 'not-allowed' : 'pointer',
-                              fontSize: '11px', fontFamily: C.font, width: '100%',
-                              background: allAnswered ? C.gold : '#1a1a1a',
-                              color: allAnswered ? '#0a0a0a' : C.dim,
-                              opacity: allAnswered ? 1 : 0.4,
-                            }}
-                          >{isUnlocking ? '解放中...' : '解放する'}</button>
+                          <p style={{ color: '#2a2a2a', fontSize: '10px' }}>記入待ち</p>
                         )}
                       </div>
                     );
