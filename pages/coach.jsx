@@ -110,6 +110,9 @@ export default function CoachPage() {
   const [questionsOpen, setQuestionsOpen] = useState(true);
   const [questionsUpdatedAt, setQuestionsUpdatedAt] = useState(null);
 
+  // Session unlock states
+  const [unlockingSession, setUnlockingSession] = useState(null);
+
   const passcodeRef = useRef('');
   const channelRef = useRef(null);
   const selectedClientRef = useRef(null);
@@ -279,6 +282,31 @@ export default function CoachPage() {
     setPhase('clients');
   };
 
+  const handleUnlockSession = async (sessionId) => {
+    if (!selectedClient) return;
+    setUnlockingSession(sessionId);
+    try {
+      const r = await fetch('/api/admin/unlock-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: selectedClient.id, sessionId }),
+      });
+      if (r.ok) {
+        setClientData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            sessions: {
+              ...prev.sessions,
+              [sessionId]: { ...(prev.sessions?.[sessionId] || {}), unlocked: true },
+            },
+          };
+        });
+      }
+    } catch {}
+    setUnlockingSession(null);
+  };
+
   const handleDownloadPDF = () => {
     if (!clientData || !selectedClient) return;
     const completedSessions = Object.entries(clientData.sessions || {})
@@ -407,6 +435,51 @@ ${body}
                 <button onClick={handleBack} style={ghost()}>← 戻る</button>
               </div>
             </div>
+
+            {/* セッション解放管理 */}
+            {clientData && (
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
+                <div style={{ background: C.surface, padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
+                  <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>セッション解放管理</p>
+                </div>
+                <div style={{ padding: '16px 20px', display: 'flex', gap: '12px' }}>
+                  {[1, 2, 3].map(id => {
+                    const sess = clientData.sessions?.[id] || {};
+                    const cfg = SESSIONS_MAP[id];
+                    let totalQ = 0;
+                    if (cfg) cfg.phases.forEach(p => totalQ += p.questions.length);
+                    const answeredQ = Object.keys(sess.answers || {}).length;
+                    const allAnswered = totalQ > 0 && answeredQ >= totalQ;
+                    const unlocked = sess.unlocked || false;
+                    const completed = sess.status === 'completed';
+                    const isUnlocking = unlockingSession === id;
+                    return (
+                      <div key={id} style={{ flex: 1, padding: '14px', background: '#0a0a0a', borderRadius: '6px', border: `1px solid ${(unlocked || completed) ? C.gold + '44' : C.border}` }}>
+                        <p style={{ color: (unlocked || completed) ? C.gold : C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>SESSION {id}</p>
+                        <p style={{ color: C.dim, fontSize: '11px', marginBottom: '12px' }}>
+                          {completed ? '完了' : allAnswered ? '全問記入済み' : answeredQ > 0 ? `${answeredQ}/${totalQ}問` : '未開始'}
+                        </p>
+                        {completed || unlocked ? (
+                          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.08em' }}>{completed ? '完了' : '解放済み'}</p>
+                        ) : (
+                          <button
+                            onClick={() => !isUnlocking && allAnswered && handleUnlockSession(id)}
+                            style={{
+                              padding: '7px 0', border: 'none', borderRadius: '4px',
+                              cursor: isUnlocking || !allAnswered ? 'not-allowed' : 'pointer',
+                              fontSize: '11px', fontFamily: C.font, width: '100%',
+                              background: allAnswered ? C.gold : '#1a1a1a',
+                              color: allAnswered ? '#0a0a0a' : C.dim,
+                              opacity: allAnswered ? 1 : 0.4,
+                            }}
+                          >{isUnlocking ? '解放中...' : '解放する'}</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* 診断レポート */}
             <div style={{ border: `1px solid #2a2200`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
