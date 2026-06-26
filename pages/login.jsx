@@ -82,8 +82,6 @@ export default function LoginPage() {
         padding: '24px',
       }}>
         <div style={{ maxWidth: '360px', width: '100%' }}>
-          <div style={{ width: '32px', height: '2px', background: C.gold, margin: '0 0 20px' }} />
-          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '6px' }}>SEN</p>
           <p style={{ color: C.dim, fontSize: '12px', marginBottom: '28px' }}>自己分析プログラム</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '4px' }}>
