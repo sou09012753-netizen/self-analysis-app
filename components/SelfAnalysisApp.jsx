@@ -255,9 +255,16 @@ export default function SelfAnalysisApp() {
     tokenRef.current = session.token;
 
     const applyData = (parsed) => {
-      setData(parsed);
-      const rid = parsed.activeSessionId;
-      if (rid && parsed.sessions[rid]?.status === 'in_progress') {
+      const safe = {
+        ...parsed,
+        sessions: {
+          1: defaultSession(), 2: defaultSession(), 3: defaultSession(),
+          ...(parsed.sessions || {}),
+        },
+      };
+      setData(safe);
+      const rid = safe.activeSessionId;
+      if (rid && safe.sessions[rid]?.status === 'in_progress') {
         setActiveId(rid);
         setView('session-active');
         setResumeToast(true);
@@ -523,7 +530,7 @@ export default function SelfAnalysisApp() {
   const handleNext = async () => {
     setFollowupDepth(0);
     const cfg = SESSIONS[activeId - 1];
-    const answers = data.sessions[activeId].answers;
+    const answers = data.sessions?.[activeId]?.answers || {};
     if (Object.keys(answers).length >= getTotalQ(cfg)) await runCompleteSession(activeId, answers, data);
   };
 
@@ -699,9 +706,9 @@ export default function SelfAnalysisApp() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {SESSIONS.map(cfg => {
                 const id = cfg.id;
-                const session = data.sessions[id];
-                const prevSession = data.sessions[id - 1];
-                const locked = id !== 1 && !(prevSession.status === 'completed' && prevSession.workSubmitted);
+                const session = data.sessions?.[id] || defaultSession();
+                const prevSession = data.sessions?.[id - 1];
+                const locked = id !== 1 && !(prevSession?.status === 'completed' && prevSession?.workSubmitted);
                 const info = statusInfo(session);
                 const totalQ = getTotalQ(cfg);
                 const answeredQ = Object.keys(session.answers).length;
@@ -896,9 +903,9 @@ export default function SelfAnalysisApp() {
   if (view === 'session-summary') {
     const cfg = SESSIONS[activeId - 1];
     const nextPreview = NEXT_PREVIEW[activeId + 1];
-    const completedPrev = [1,2,3].filter(i => i < activeId && data.sessions[i].status === 'completed');
-    const cardContent = summaryText || data.sessions[activeId]?.summary || '';
-    const tabs = [{ label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId }, ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i-1].cardName}`, content: data.sessions[i].summary, sessionId: i }))];
+    const completedPrev = [1,2,3].filter(i => i < activeId && data.sessions?.[i]?.status === 'completed');
+    const cardContent = summaryText || data.sessions?.[activeId]?.summary || '';
+    const tabs = [{ label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId }, ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i-1].cardName}`, content: data.sessions?.[i]?.summary, sessionId: i }))];
     return (
       <>
         <Head><title>SESSION {activeId} 完了 — コーチングSEN</title></Head>
