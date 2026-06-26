@@ -258,14 +258,14 @@ export default function SelfAnalysisApp() {
       const safe = {
         ...parsed,
         sessions: {
-          1: defaultSession(), 2: defaultSession(), 3: defaultSession(),
+          "1": defaultSession(), "2": defaultSession(), "3": defaultSession(),
           ...(parsed.sessions || {}),
         },
       };
       setData(safe);
-      const rid = safe.activeSessionId;
-      if (rid && safe.sessions[rid]?.status === 'in_progress') {
-        setActiveId(rid);
+      const rid = String(safe.activeSessionId);
+      if (rid && rid !== 'null' && safe.sessions[rid]?.status === 'in_progress') {
+        setActiveId(Number(safe.activeSessionId));
         setView('session-active');
         setResumeToast(true);
         setTimeout(() => setResumeToast(false), 3500);
@@ -317,7 +317,7 @@ export default function SelfAnalysisApp() {
   }, [view, activeId]);
 
   const saveData = (updater) => setData(prev => typeof updater === 'function' ? updater(prev) : { ...prev, ...updater });
-  const patchSession = (id, updates) => saveData(prev => ({ ...prev, sessions: { ...prev.sessions, [id]: { ...prev.sessions[id], ...updates } } }));
+  const patchSession = (id, updates) => saveData(prev => ({ ...prev, sessions: { ...prev.sessions, [String(id)]: { ...prev.sessions[String(id)], ...updates } } }));
 
   const goToSessionSelect = () => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
@@ -337,8 +337,9 @@ export default function SelfAnalysisApp() {
             if (!prev) return prev;
             const updatedSessions = { ...prev.sessions };
             for (const id of [1, 2, 3]) {
-              if (sessionData.sessions[id]) {
-                updatedSessions[id] = { ...updatedSessions[id], unlocked: sessionData.sessions[id].unlocked || false };
+              const sid = String(id);
+              if (sessionData.sessions[sid]) {
+                updatedSessions[sid] = { ...updatedSessions[sid], unlocked: sessionData.sessions[sid].unlocked || false };
               }
             }
             return { ...prev, sessions: updatedSessions };
@@ -372,7 +373,7 @@ export default function SelfAnalysisApp() {
   const handleSelectSession = async (id) => {
     setActiveId(id);
     setSummaryTab(0);
-    const session = data.sessions[id];
+    const session = data.sessions[String(id)];
     if (session.status === 'completed') {
       setSummaryText(session.summary);
       setSummaryError('');
@@ -425,7 +426,7 @@ export default function SelfAnalysisApp() {
   const handleSubmit = async () => {
     if (answer.trim().length < 10 || isLoading || isFollowingUp) return;
     const cfg = SESSIONS[activeId - 1];
-    const session = data.sessions[activeId];
+    const session = data.sessions[String(activeId)];
     const saved = answer;
     setIsLoading(true);
     setIsFollowingUp(true);
@@ -439,7 +440,7 @@ export default function SelfAnalysisApp() {
 
       try {
         const previousContext = activeId > 1
-          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[i]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[i].summary}` : null).filter(Boolean).join('\n\n')
+          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[String(i)]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[String(i)].summary}` : null).filter(Boolean).join('\n\n')
           : '';
         const fu = await callAPI({
           type: 'followup',
@@ -492,8 +493,9 @@ export default function SelfAnalysisApp() {
       try {
         const confused = isConfused(saved);
         const previousContext = activeId > 1
-          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[i]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[i].summary}` : null).filter(Boolean).join('\n\n')
+          ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[String(i)]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[String(i)].summary}` : null).filter(Boolean).join('\n\n')
           : '';
+        console.log('[followup] session:', String(activeId), 'answers:', session.answers, 'next Q:', current?.question);
         const fu = await callAPI(
           confused
             ? { type: 'reframe', question: current.question, answer: saved }
@@ -546,7 +548,7 @@ export default function SelfAnalysisApp() {
       }));
       const previousSummaries = [];
       for (let i = 1; i < sessionId; i++) {
-        if (currentData.sessions[i]?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: currentData.sessions[i].summary });
+        if (currentData.sessions[String(i)]?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: currentData.sessions[String(i)].summary });
       }
       callAPI({ type: 'onelineinsight', allAnswers }).then(text => { if (text) setOnelineText(text); }).catch(() => {});
       const summary = await callAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries });
@@ -572,7 +574,7 @@ export default function SelfAnalysisApp() {
     try {
       const allSessionData = SESSIONS.map((cfg, idx) => {
         const id = idx + 1;
-        const s = data.sessions[id];
+        const s = data.sessions[String(id)];
         return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: phase.questions.map((q, qi) => ({ question: q, answer: s.answers[`${pi}-${qi}`] || '未回答' })) })) };
       });
       const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData });
@@ -593,7 +595,7 @@ export default function SelfAnalysisApp() {
 
   const buildSessionText = (sid) => {
     const cfg = SESSIONS[sid - 1];
-    const session = data.sessions[sid];
+    const session = data.sessions[String(sid)];
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
     let t = `${bar}\nコーチングSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
@@ -609,7 +611,7 @@ export default function SelfAnalysisApp() {
     t += (data.integratedDoc || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     t += `\n\n\n${bar}\n■ 全セッション回答データ\n${bar}\n\n`;
     SESSIONS.forEach((cfg, idx) => {
-      const id = idx + 1; const session = data.sessions[id];
+      const id = idx + 1; const session = data.sessions[String(id)];
       t += `■ SESSION ${id}「${cfg.title}」\n\n`;
       cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
       t += '\n';
@@ -617,13 +619,13 @@ export default function SelfAnalysisApp() {
     return t;
   };
 
-  const exportFilename = (sid) => `${data.userName}_SESSION${sid}_${(data.sessions[sid]?.completedAt ? new Date(data.sessions[sid].completedAt) : new Date()).toISOString().slice(0,10).replace(/-/g,'')}.txt`;
+  const exportFilename = (sid) => `${data.userName}_SESSION${sid}_${(data.sessions[String(sid)]?.completedAt ? new Date(data.sessions[String(sid)].completedAt) : new Date()).toISOString().slice(0,10).replace(/-/g,'')}.txt`;
 
   const handleGoToWork = async (sessionId) => {
     setWorkContent(null); setWorkAnswer(''); setIsGeneratingWork(true);
     setView('session-work');
     try {
-      const summary = data.sessions[sessionId].summary;
+      const summary = data.sessions[String(sessionId)].summary;
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -652,7 +654,7 @@ export default function SelfAnalysisApp() {
     setIsSavingWork(false);
   };
 
-  const allDone = data && data.sessions && [1,2,3].every(i => data.sessions[i]?.status === 'completed');
+  const allDone = data && data.sessions && [1,2,3].every(i => data.sessions[String(i)]?.status === 'completed');
 
   if (authChecking) return null;
 
@@ -706,8 +708,8 @@ export default function SelfAnalysisApp() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {SESSIONS.map(cfg => {
                 const id = cfg.id;
-                const session = data.sessions?.[id] || defaultSession();
-                const prevSession = data.sessions?.[id - 1];
+                const session = data.sessions?.[String(id)] || defaultSession();
+                const prevSession = data.sessions?.[String(id - 1)];
                 const locked = id !== 1 && !(prevSession?.status === 'completed' && prevSession?.workSubmitted);
                 const info = statusInfo(session);
                 const totalQ = getTotalQ(cfg);
@@ -755,7 +757,7 @@ export default function SelfAnalysisApp() {
 
   if (view === 'session-active') {
     const cfg = SESSIONS[activeId - 1];
-    const session = data.sessions[activeId];
+    const session = data.sessions[String(activeId)];
     const current = getNextQ(session, cfg);
     const totalQ = getTotalQ(cfg);
     const answeredQ = Object.keys(session.answers).length;
@@ -903,9 +905,9 @@ export default function SelfAnalysisApp() {
   if (view === 'session-summary') {
     const cfg = SESSIONS[activeId - 1];
     const nextPreview = NEXT_PREVIEW[activeId + 1];
-    const completedPrev = [1,2,3].filter(i => i < activeId && data.sessions?.[i]?.status === 'completed');
-    const cardContent = summaryText || data.sessions?.[activeId]?.summary || '';
-    const tabs = [{ label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId }, ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i-1].cardName}`, content: data.sessions?.[i]?.summary, sessionId: i }))];
+    const completedPrev = [1,2,3].filter(i => i < activeId && data.sessions?.[String(i)]?.status === 'completed');
+    const cardContent = summaryText || data.sessions?.[String(activeId)]?.summary || '';
+    const tabs = [{ label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId }, ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i-1].cardName}`, content: data.sessions?.[String(i)]?.summary, sessionId: i }))];
     return (
       <>
         <Head><title>SESSION {activeId} 完了 — コーチングSEN</title></Head>
@@ -929,7 +931,7 @@ export default function SelfAnalysisApp() {
                   ? <div style={{ padding: '20px 0' }}>
                       <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '8px' }}>生成に失敗しました</p>
                       <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>{summaryError}</p>
-                      <button onClick={() => runCompleteSession(activeId, data.sessions[activeId].answers, data)} style={goldBtn(true)}>もう一度試す</button>
+                      <button onClick={() => runCompleteSession(activeId, data.sessions[String(activeId)].answers, data)} style={goldBtn(true)}>もう一度試す</button>
                     </div>
                   : <div style={{ textAlign: 'center', padding: '40px 0' }}>
                       <div style={{ width: '32px', height: '1px', background: C.gold, margin: '0 auto 24px' }} />
@@ -939,7 +941,7 @@ export default function SelfAnalysisApp() {
             </div>
             {!isSummarizing && !summaryError && (
               <div style={{ display: 'flex', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
-                {activeId < 3 && !data.sessions[activeId]?.workSubmitted
+                {activeId < 3 && !data.sessions[String(activeId)]?.workSubmitted
                   ? <button onClick={() => handleGoToWork(activeId)} style={goldBtn(true)}>次回までのワークを確認する →</button>
                   : <button onClick={goToSessionSelect} style={goldBtn(true)}>セッション選択へ</button>}
                 {activeId === 3 && (
