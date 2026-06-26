@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+
+const SENParticle = dynamic(() => import('../components/SENParticle'), { ssr: false });
 
 const SESSION_KEY = 'coaching_sen_token';
 
@@ -50,7 +53,6 @@ export default function LoginPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'ログインに失敗しました');
-
       localStorage.setItem(SESSION_KEY, json.access_token);
       window.location.href = '/';
     } catch (err) {
@@ -67,51 +69,59 @@ export default function LoginPage() {
   if (checking) return null;
 
   return (
-    <>
-      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font, padding: '24px' }}>
-        <div style={{ maxWidth: '400px', width: '100%' }}>
-          <div style={{ width: '40px', height: '2px', background: C.gold, margin: '0 0 36px' }} />
-          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '10px' }}>SEN</p>
-          <h1 style={{ color: C.text, fontSize: '22px', fontWeight: '300', marginBottom: '8px' }}>SEN</h1>
-          <p style={{ color: C.dim, fontSize: '13px', marginBottom: '40px' }}>自己分析プログラム</p>
+    <div style={{ position: 'relative', minHeight: '100vh', background: C.bg, overflow: 'hidden', fontFamily: C.font }}>
+      {/* パーティクル背景 */}
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <SENParticle />
+      </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '6px' }}>
+      {/* ログインフォーム */}
+      <div style={{
+        position: 'relative', zIndex: 10,
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}>
+        <div style={{ maxWidth: '360px', width: '100%' }}>
+          <div style={{ width: '32px', height: '2px', background: C.gold, margin: '0 0 20px' }} />
+          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '6px' }}>SEN</p>
+          <p style={{ color: C.dim, fontSize: '12px', marginBottom: '28px' }}>自己分析プログラム</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '4px' }}>
             <input
               type="email" placeholder="メールアドレス"
               value={email} onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              style={{ width: '100%', padding: '14px 16px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '15px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }}
+              style={{ width: '100%', padding: '12px 14px', background: 'rgba(10,10,10,0.7)', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }}
             />
             <input
               type="password" placeholder="パスワード"
               value={password} onChange={e => setPassword(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              style={{ width: '100%', padding: '14px 16px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '15px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }}
+              style={{ width: '100%', padding: '12px 14px', background: 'rgba(10,10,10,0.7)', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontFamily: C.font }}
             />
           </div>
 
-          {error && <p style={{ color: C.red, fontSize: '12px', margin: '10px 0' }}>{error}</p>}
+          {error && <p style={{ color: C.red, fontSize: '12px', margin: '8px 0' }}>{error}</p>}
 
           <button
             onClick={handleLogin}
             disabled={!email.trim() || !password || isLoading}
             style={{
-              width: '100%', padding: '15px', border: 'none', borderRadius: '4px', marginTop: '14px',
+              width: '100%', padding: '13px', border: 'none', borderRadius: '4px', marginTop: '12px',
               background: (email.trim() && password) ? C.gold : '#1a1a1a',
               color: (email.trim() && password) ? '#0a0a0a' : C.dim,
               cursor: (email.trim() && password && !isLoading) ? 'pointer' : 'not-allowed',
-              fontSize: '14px', letterSpacing: '0.12em', fontFamily: C.font,
+              fontSize: '13px', letterSpacing: '0.12em', fontFamily: C.font,
             }}
           >
             {isLoading ? 'ログイン中...' : 'ログイン'}
           </button>
 
-          <p style={{ color: '#2a2a2a', fontSize: '11px', marginTop: '28px', textAlign: 'center' }}>
+          <p style={{ color: '#2a2a2a', fontSize: '11px', marginTop: '20px', textAlign: 'center' }}>
             アカウントはコーチから発行されます
           </p>
         </div>
       </div>
-    </>
+    </div>
   );
 }
-
