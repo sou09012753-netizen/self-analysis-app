@@ -597,7 +597,7 @@ export default function SelfAnalysisApp() {
     const session = data.sessions[String(sid)];
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
-    let t = `${bar}\nコーチングSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
+    let t = `${bar}\nSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
     cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
@@ -606,7 +606,7 @@ export default function SelfAnalysisApp() {
 
   const buildFinalText = () => {
     const bar = '━'.repeat(48);
-    let t = `${bar}\nコーチングSEN\n${data.userName} 分身ドキュメント  /  ${new Date().toLocaleDateString('ja-JP')}\n${bar}\n\n`;
+    let t = `${bar}\nSEN\n${data.userName} 分身ドキュメント  /  ${new Date().toLocaleDateString('ja-JP')}\n${bar}\n\n`;
     t += (data.integratedDoc || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     t += `\n\n\n${bar}\n■ 全セッション回答データ\n${bar}\n\n`;
     SESSIONS.forEach((cfg, idx) => {
@@ -659,12 +659,12 @@ export default function SelfAnalysisApp() {
 
   if (view === 'landing') return (
     <>
-      <Head><title>コーチングSEN 自己分析プログラム</title></Head>
+      <Head><title>SEN 自己分析プログラム</title></Head>
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font, padding: '24px' }}>
         <div style={{ maxWidth: '460px', width: '100%', textAlign: 'center' }}>
           <div style={{ width: '40px', height: '2px', background: C.gold, margin: '0 auto 36px' }} />
-          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '14px' }}>COACHING SEN</p>
-          <h1 style={{ color: C.text, fontSize: '19px', fontWeight: '300', letterSpacing: '0.04em', marginBottom: '16px', lineHeight: '1.4' }}>コーチングSEN 自己分析プログラム</h1>
+          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '14px' }}>SEN</p>
+          <h1 style={{ color: C.text, fontSize: '19px', fontWeight: '300', letterSpacing: '0.04em', marginBottom: '16px', lineHeight: '1.4' }}>SEN 自己分析プログラム</h1>
           <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.9', marginBottom: '40px' }}>3回のセッションで、自分が動く理由・止まる理由・<br />これからの軸を、自分の言葉で手に入れる。</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '40px', textAlign: 'left' }}>
             {SESSIONS.map(s => (
@@ -693,12 +693,12 @@ export default function SelfAnalysisApp() {
     };
     return (
       <>
-        <Head><title>セッション選択 — コーチングSEN</title></Head>
+        <Head><title>セッション選択 — SEN</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '48px 20px' }}>
           <div style={{ maxWidth: '520px', margin: '0 auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>COACHING SEN</p>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>SEN</p>
                 <h2 style={{ color: C.text, fontSize: '20px', fontWeight: '300', marginBottom: '4px' }}>{data.userName}</h2>
                 <p style={{ color: C.dim, fontSize: '12px', marginBottom: '40px' }}>セッションを選択してください</p>
               </div>
@@ -909,7 +909,7 @@ export default function SelfAnalysisApp() {
     const tabs = [{ label: `今日の発見 — ${cfg.cardName}`, content: cardContent, sessionId: activeId }, ...completedPrev.map(i => ({ label: `SESSION ${i} — ${SESSIONS[i-1].cardName}`, content: data.sessions?.[String(i)]?.summary, sessionId: i }))];
     return (
       <>
-        <Head><title>SESSION {activeId} 完了 — コーチングSEN</title></Head>
+        <Head><title>SESSION {activeId} 完了 — SEN</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '44px 20px 80px' }}>
           <div style={{ maxWidth: '660px', margin: '0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>

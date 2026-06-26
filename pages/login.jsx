@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [checking, setChecking]   = useState(true);
 
   useEffect(() => {
-    document.title = 'ログイン — コーチングSEN';
+    document.title = 'ログイン — SEN';
     try {
       const token = localStorage.getItem(SESSION_KEY);
       if (token && isTokenValid(token)) {
@@ -71,8 +71,8 @@ export default function LoginPage() {
       <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font, padding: '24px' }}>
         <div style={{ maxWidth: '400px', width: '100%' }}>
           <div style={{ width: '40px', height: '2px', background: C.gold, margin: '0 0 36px' }} />
-          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '10px' }}>COACHING SEN</p>
-          <h1 style={{ color: C.text, fontSize: '22px', fontWeight: '300', marginBottom: '8px' }}>コーチングSEN</h1>
+          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '10px' }}>SEN</p>
+          <h1 style={{ color: C.text, fontSize: '22px', fontWeight: '300', marginBottom: '8px' }}>SEN</h1>
           <p style={{ color: C.dim, fontSize: '13px', marginBottom: '40px' }}>自己分析プログラム</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '6px' }}>

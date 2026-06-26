@@ -241,11 +241,11 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <>
-        <Head><title>管理画面 — コーチングSEN</title></Head>
+        <Head><title>管理画面 — SEN</title></Head>
         <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font, padding: '24px' }}>
           <div style={{ maxWidth: '360px', width: '100%' }}>
             <div style={{ width: '32px', height: '2px', background: C.gold, marginBottom: '32px' }} />
-            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '8px' }}>COACHING SEN</p>
+            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.4em', marginBottom: '8px' }}>SEN</p>
             <h1 style={{ color: C.text, fontSize: '18px', fontWeight: '300', marginBottom: '32px' }}>管理画面</h1>
             <input
               type="password" placeholder="パスワードを入力"
@@ -271,14 +271,14 @@ export default function AdminPage() {
 
   return (
     <>
-      <Head><title>管理画面 — コーチングSEN</title></Head>
+      <Head><title>管理画面 — SEN</title></Head>
       <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '40px 20px 80px' }}>
         <div style={{ maxWidth: '900px', margin: '0 auto' }}>
 
           {/* ヘッダー */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>COACHING SEN — ADMIN</p>
+              <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '6px' }}>SEN — ADMIN</p>
               <h1 style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 4px' }}>回答データ管理</h1>
               <p style={{ color: C.dim, fontSize: '11px', margin: 0 }}>{users.length} 名のユーザー</p>
             </div>
