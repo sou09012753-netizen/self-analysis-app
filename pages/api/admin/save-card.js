@@ -1,12 +1,12 @@
 import { getSupabase } from '../../../lib/supabase';
+import { validateCoachPasscode } from '../../../lib/coachAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   const passcode = req.headers['x-coach-passcode'];
-  if (!passcode || passcode !== process.env.COACH_PASSCODE) {
-    return res.status(401).json({ error: 'Invalid passcode' });
-  }
+  const coach = await validateCoachPasscode(passcode);
+  if (!coach) return res.status(401).json({ error: 'Invalid passcode' });
 
   const { userId, sessionId, summary } = req.body;
   if (!userId || !sessionId || !summary) return res.status(400).json({ error: 'Missing params' });
@@ -17,6 +17,7 @@ export default async function handler(req, res) {
     .from('coaching_users')
     .select('session_data')
     .eq('id', userId)
+    .eq('coach_id', coach.id)
     .single();
 
   if (error) return res.status(500).json({ error: error.message });

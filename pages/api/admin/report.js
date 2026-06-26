@@ -1,10 +1,10 @@
 import { getSupabase } from '../../../lib/supabase';
-
-const checkPasscode = (req) =>
-  req.headers['x-coach-passcode'] === process.env.COACH_PASSCODE;
+import { validateCoachPasscode } from '../../../lib/coachAuth';
 
 export default async function handler(req, res) {
-  if (!checkPasscode(req)) return res.status(401).json({ error: 'Invalid passcode' });
+  const passcode = req.headers['x-coach-passcode'];
+  const coach = await validateCoachPasscode(passcode);
+  if (!coach) return res.status(401).json({ error: 'Invalid passcode' });
 
   const supabase = getSupabase();
 

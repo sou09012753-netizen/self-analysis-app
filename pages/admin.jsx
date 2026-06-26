@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { SESSIONS } from '../components/SelfAnalysisApp';
 
 
- 
+
 const C = {
   bg: '#0a0a0a', gold: '#c9a84c', text: '#f5f0e8',
   muted: '#888', dim: '#555', surface: '#111',
@@ -77,6 +77,12 @@ const statusLabel = (s) => {
   return { text: '未開始', color: C.dim };
 };
 
+const inputStyle = {
+  padding: '12px 14px', background: 'transparent', border: '1px solid #333',
+  borderRadius: '4px', color: '#f5f0e8', fontSize: '14px', outline: 'none',
+  fontFamily: "'Noto Serif JP', Georgia, serif",
+};
+
 export default function AdminPage() {
   const [authed, setAuthed]           = useState(false);
   const [pw, setPw]                   = useState('');
@@ -88,12 +94,25 @@ export default function AdminPage() {
   const [expandedUser, setExpandedUser]       = useState(null);
   const [expandedSession, setExpandedSession] = useState(null);
 
+  // クライアント作成
   const [newEmail, setNewEmail]       = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [selectedCoachId, setSelectedCoachId] = useState('');
   const [isCreating, setIsCreating]   = useState(false);
   const [createError, setCreateError] = useState('');
   const [createSuccess, setCreateSuccess] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+
+  // コーチ管理
+  const [coaches, setCoaches]         = useState([]);
+  const [showCreateCoachForm, setShowCreateCoachForm] = useState(false);
+  const [newCoachName, setNewCoachName]     = useState('');
+  const [newCoachPasscode, setNewCoachPasscode] = useState('');
+  const [isCreatingCoach, setIsCreatingCoach]   = useState(false);
+  const [createCoachError, setCreateCoachError] = useState('');
+  const [createCoachSuccess, setCreateCoachSuccess] = useState('');
+  const [coachSectionOpen, setCoachSectionOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -103,6 +122,7 @@ export default function AdminPage() {
       setPw(savedPw);
       setAuthed(true);
       fetchUsers(savedPw);
+      fetchCoaches(savedPw);
     }
   }, []);
 
@@ -121,6 +141,14 @@ export default function AdminPage() {
     }
   };
 
+  const fetchCoaches = async (password) => {
+    try {
+      const res = await fetch(`/api/admin/coaches?password=${encodeURIComponent(password)}`);
+      const json = await res.json();
+      setCoaches(json.coaches || []);
+    } catch {}
+  };
+
   const handleLogin = async () => {
     if (!pw.trim() || isLoggingIn) return;
     setIsLoggingIn(true);
@@ -136,6 +164,7 @@ export default function AdminPage() {
         sessionStorage.setItem('admin_pw', pw);
         setAuthed(true);
         fetchUsers(pw);
+        fetchCoaches(pw);
       } else {
         setLoginError('パスワードが違います');
       }
@@ -151,6 +180,7 @@ export default function AdminPage() {
     setAuthed(false);
     setPw('');
     setUsers([]);
+    setCoaches([]);
   };
 
   const handleCreateUser = async () => {
@@ -162,19 +192,48 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPassword: pw, email: newEmail.trim(), userPassword: newPassword }),
+        body: JSON.stringify({
+          adminPassword: pw,
+          email: newEmail.trim(),
+          userPassword: newPassword,
+          userName: newUserName.trim() || undefined,
+          coachId: selectedCoachId || undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'ユーザー作成に失敗しました');
       setCreateSuccess(`${newEmail.trim()} を作成しました`);
-      setNewEmail('');
-      setNewPassword('');
+      setNewEmail(''); setNewPassword(''); setNewUserName(''); setSelectedCoachId('');
       setShowCreateForm(false);
       fetchUsers(pw);
     } catch (err) {
       setCreateError(err.message);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleCreateCoach = async () => {
+    if (!newCoachName.trim() || newCoachPasscode.length !== 4 || isCreatingCoach) return;
+    setIsCreatingCoach(true);
+    setCreateCoachError('');
+    setCreateCoachSuccess('');
+    try {
+      const res = await fetch('/api/admin/coaches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: pw, name: newCoachName.trim(), passcode: newCoachPasscode }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'コーチ作成に失敗しました');
+      setCreateCoachSuccess(`${newCoachName.trim()} を作成しました（パスコード: ${newCoachPasscode}）`);
+      setNewCoachName(''); setNewCoachPasscode('');
+      setShowCreateCoachForm(false);
+      fetchCoaches(pw);
+    } catch (err) {
+      setCreateCoachError(err.message);
+    } finally {
+      setIsCreatingCoach(false);
     }
   };
 
@@ -233,7 +292,7 @@ export default function AdminPage() {
                 </button>
               )}
               <button
-                onClick={() => fetchUsers(pw)}
+                onClick={() => { fetchUsers(pw); fetchCoaches(pw); }}
                 style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: C.font }}
               >
                 更新
@@ -247,7 +306,88 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* クライアント追加フォーム */}
+          {/* ── コーチ管理 ── */}
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '28px', overflow: 'hidden' }}>
+            <div
+              onClick={() => setCoachSectionOpen(o => !o)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', cursor: 'pointer', background: C.surface, userSelect: 'none' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>COACH MANAGEMENT</p>
+                <span style={{ color: C.dim, fontSize: '11px' }}>{coaches.length} 名</span>
+              </div>
+              <span style={{ color: C.dim, fontSize: '14px' }}>{coachSectionOpen ? '▲' : '▼'}</span>
+            </div>
+
+            {coachSectionOpen && (
+              <div style={{ padding: '20px', borderTop: `1px solid ${C.border}` }}>
+                {/* コーチ一覧 */}
+                {coaches.length === 0 ? (
+                  <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>コーチがいません</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                    {coaches.map(c => (
+                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#0a0a0a', borderRadius: '6px', border: `1px solid ${C.border}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                          <span style={{ color: C.text, fontSize: '14px' }}>{c.name}</span>
+                          <span style={{ color: C.dim, fontSize: '11px' }}>
+                            パスコード: <span style={{ color: C.gold, fontFamily: 'monospace', letterSpacing: '0.3em' }}>{c.passcode}</span>
+                          </span>
+                        </div>
+                        <span style={{ color: '#333', fontSize: '10px' }}>{new Date(c.created_at).toLocaleDateString('ja-JP')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* コーチ追加フォーム */}
+                {!showCreateCoachForm ? (
+                  <button
+                    onClick={() => { setShowCreateCoachForm(true); setCreateCoachError(''); setCreateCoachSuccess(''); }}
+                    style={{ padding: '10px 18px', border: `1px solid ${C.gold}66`, borderRadius: '4px', background: 'transparent', color: C.gold, fontSize: '12px', cursor: 'pointer', fontFamily: C.font }}
+                  >
+                    ＋ コーチを追加
+                  </button>
+                ) : (
+                  <div style={{ padding: '20px', border: `1px solid ${C.gold}33`, borderRadius: '8px', background: '#0c0c0c' }}>
+                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '14px' }}>新規コーチ</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+                      <input
+                        type="text" placeholder="コーチ名"
+                        value={newCoachName} onChange={e => setNewCoachName(e.target.value)}
+                        style={inputStyle}
+                      />
+                      <input
+                        type="text" placeholder="パスコード（4桁の数字）" maxLength={4}
+                        value={newCoachPasscode} onChange={e => setNewCoachPasscode(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={e => e.key === 'Enter' && handleCreateCoach()}
+                        style={{ ...inputStyle, letterSpacing: '0.4em', fontFamily: 'monospace' }}
+                      />
+                    </div>
+                    {createCoachError && <p style={{ color: C.red, fontSize: '12px', marginBottom: '10px' }}>{createCoachError}</p>}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={handleCreateCoach}
+                        disabled={!newCoachName.trim() || newCoachPasscode.length !== 4 || isCreatingCoach}
+                        style={{ padding: '10px 20px', border: 'none', borderRadius: '4px', background: (newCoachName.trim() && newCoachPasscode.length === 4) ? C.gold : '#1a1a1a', color: (newCoachName.trim() && newCoachPasscode.length === 4) ? '#0a0a0a' : C.dim, cursor: (newCoachName.trim() && newCoachPasscode.length === 4) ? 'pointer' : 'not-allowed', fontSize: '12px', fontFamily: C.font }}
+                      >
+                        {isCreatingCoach ? '作成中...' : '追加'}
+                      </button>
+                      <button
+                        onClick={() => { setShowCreateCoachForm(false); setCreateCoachError(''); }}
+                        style={{ padding: '10px 16px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.dim, fontSize: '12px', cursor: 'pointer', fontFamily: C.font }}
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {createCoachSuccess && <p style={{ color: C.green, fontSize: '12px', marginTop: '10px' }}>{createCoachSuccess}</p>}
+              </div>
+            )}
+          </div>
+
+          {/* ── クライアント追加フォーム ── */}
           <div style={{ marginBottom: '28px' }}>
             {!showCreateForm ? (
               <button
@@ -261,16 +401,32 @@ export default function AdminPage() {
                 <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '16px' }}>新規クライアント</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
                   <input
+                    type="text" placeholder="クライアント名（表示名）"
+                    value={newUserName} onChange={e => setNewUserName(e.target.value)}
+                    style={inputStyle}
+                  />
+                  <input
                     type="email" placeholder="メールアドレス"
                     value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                    style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                    style={inputStyle}
                   />
                   <input
                     type="password" placeholder="初期パスワード（8文字以上）"
                     value={newPassword} onChange={e => setNewPassword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleCreateUser()}
-                    style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                    style={inputStyle}
                   />
+                  {coaches.length > 0 && (
+                    <select
+                      value={selectedCoachId} onChange={e => setSelectedCoachId(e.target.value)}
+                      style={{ ...inputStyle, color: selectedCoachId ? '#f5f0e8' : C.dim }}
+                    >
+                      <option value="">担当コーチを選択（任意）</option>
+                      {coaches.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 {createError && <p style={{ color: C.red, fontSize: '12px', marginBottom: '10px' }}>{createError}</p>}
                 <div style={{ display: 'flex', gap: '10px' }}>

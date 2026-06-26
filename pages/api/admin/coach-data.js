@@ -1,12 +1,12 @@
 import { getSupabase } from '../../../lib/supabase';
+import { validateCoachPasscode } from '../../../lib/coachAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
 
   const passcode = req.headers['x-coach-passcode'];
-  if (!passcode || passcode !== process.env.COACH_PASSCODE) {
-    return res.status(401).json({ error: 'Invalid passcode' });
-  }
+  const coach = await validateCoachPasscode(passcode);
+  if (!coach) return res.status(401).json({ error: 'Invalid passcode' });
 
   const supabase = getSupabase();
   const { action } = req.query;
@@ -15,16 +15,17 @@ export default async function handler(req, res) {
     const { data, error } = await supabase
       .from('coaching_users')
       .select('id, user_name, updated_at')
+      .eq('coach_id', coach.id)
       .order('updated_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ clients: data || [] });
+    return res.json({ clients: data || [], coachName: coach.name });
   }
 
   if (action === 'answers') {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
     const [{ data, error }, { data: works }] = await Promise.all([
-      supabase.from('coaching_users').select('user_name, session_data').eq('id', userId).single(),
+      supabase.from('coaching_users').select('user_name, session_data').eq('id', userId).eq('coach_id', coach.id).single(),
       supabase.from('work_responses').select('session_no, work_text, response_text').eq('user_id', userId).order('session_no'),
     ]);
     if (error) return res.status(500).json({ error: error.message });

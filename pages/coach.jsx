@@ -98,6 +98,15 @@ export default function CoachPage() {
   const [clientData, setClientData] = useState(null);
   const [clientWorkResponses, setClientWorkResponses] = useState([]);
 
+  // クライアント追加
+  const [showCreateClient, setShowCreateClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPassword, setNewClientPassword] = useState('');
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  const [createClientError, setCreateClientError] = useState('');
+  const [createClientSuccess, setCreateClientSuccess] = useState('');
+
   // Report states
   const [reportText, setReportText] = useState(null);
   const [reportOpen, setReportOpen] = useState(true);
@@ -285,6 +294,29 @@ export default function CoachPage() {
     setPhase('clients');
   };
 
+  const handleCreateClient = async () => {
+    if (!newClientName.trim() || !newClientEmail.trim() || !newClientPassword || isCreatingClient) return;
+    setIsCreatingClient(true);
+    setCreateClientError('');
+    setCreateClientSuccess('');
+    try {
+      const r = await fetch('/api/coach/create-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userName: newClientName.trim(), email: newClientEmail.trim(), userPassword: newClientPassword }),
+      });
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error || 'クライアント作成に失敗しました');
+      setCreateClientSuccess(`${newClientName.trim()} を追加しました`);
+      setNewClientName(''); setNewClientEmail(''); setNewClientPassword('');
+      setShowCreateClient(false);
+      loadClients(passcodeRef.current);
+    } catch (err) {
+      setCreateClientError(err.message);
+    }
+    setIsCreatingClient(false);
+  };
+
   const handleGenerateCard = async (sessionId) => {
     if (!selectedClient || !clientData) return;
     setGeneratingCard(sessionId);
@@ -448,7 +480,58 @@ ${body}
       <Head><title>クライアント選択 — コーチ台本</title></Head>
       <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '48px 24px' }}>
         <div style={{ maxWidth: '520px', margin: '0 auto' }}>
-          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', marginBottom: '28px' }}>COACH MODE — クライアント選択</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>COACH MODE — クライアント選択</p>
+            <button
+              onClick={() => { setShowCreateClient(true); setCreateClientError(''); setCreateClientSuccess(''); }}
+              style={{ padding: '8px 16px', border: `1px solid ${C.gold}66`, borderRadius: '4px', background: 'transparent', color: C.gold, fontSize: '11px', cursor: 'pointer', fontFamily: C.font }}
+            >
+              ＋ クライアントを追加
+            </button>
+          </div>
+
+          {/* クライアント追加フォーム */}
+          {showCreateClient && (
+            <div style={{ padding: '20px', border: `1px solid ${C.gold}33`, borderRadius: '8px', background: '#0c0c0c', marginBottom: '20px' }}>
+              <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '14px' }}>新規クライアント</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+                <input
+                  type="text" placeholder="クライアント名"
+                  value={newClientName} onChange={e => setNewClientName(e.target.value)}
+                  style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                />
+                <input
+                  type="email" placeholder="メールアドレス"
+                  value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)}
+                  style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                />
+                <input
+                  type="password" placeholder="初期パスワード（8文字以上）"
+                  value={newClientPassword} onChange={e => setNewClientPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreateClient()}
+                  style={{ padding: '12px 14px', background: 'transparent', border: '1px solid #333', borderRadius: '4px', color: C.text, fontSize: '14px', outline: 'none', fontFamily: C.font }}
+                />
+              </div>
+              {createClientError && <p style={{ color: C.red, fontSize: '12px', marginBottom: '10px' }}>{createClientError}</p>}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={handleCreateClient}
+                  disabled={!newClientName.trim() || !newClientEmail.trim() || !newClientPassword || isCreatingClient}
+                  style={btn(newClientName.trim() && newClientEmail.trim() && newClientPassword && !isCreatingClient)}
+                >
+                  {isCreatingClient ? '作成中...' : '追加'}
+                </button>
+                <button
+                  onClick={() => { setShowCreateClient(false); setCreateClientError(''); }}
+                  style={ghost()}
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          )}
+          {createClientSuccess && <p style={{ color: C.green, fontSize: '12px', marginBottom: '16px' }}>{createClientSuccess}</p>}
+
           {clients.length === 0 ? (
             <p style={{ color: C.dim, fontSize: '13px' }}>クライアントが見つかりません</p>
           ) : (
