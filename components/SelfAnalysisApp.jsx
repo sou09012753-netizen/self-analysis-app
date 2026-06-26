@@ -495,7 +495,6 @@ export default function SelfAnalysisApp() {
         const previousContext = activeId > 1
           ? [1, 2].slice(0, activeId - 1).map(i => data.sessions[String(i)]?.summary ? `【SESSION ${i} サマリー】\n${data.sessions[String(i)].summary}` : null).filter(Boolean).join('\n\n')
           : '';
-        console.log('[followup] session:', String(activeId), 'answers:', session.answers, 'next Q:', current?.question);
         const fu = await callAPI(
           confused
             ? { type: 'reframe', question: current.question, answer: saved }
