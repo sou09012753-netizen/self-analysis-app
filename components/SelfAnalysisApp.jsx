@@ -645,7 +645,7 @@ export default function SelfAnalysisApp() {
     setIsSavingWork(false);
   };
 
-  const allDone = data && [1,2,3].every(i => data.sessions[i].status === 'completed');
+  const allDone = data && data.sessions && [1,2,3].every(i => data.sessions[i]?.status === 'completed');
 
   if (authChecking) return null;
 
