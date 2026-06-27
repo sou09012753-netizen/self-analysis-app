@@ -64,7 +64,8 @@ ${depthAngle}
       let replyText = raw;
       let score = null;
       try {
-        const parsed = JSON.parse(stripFences(raw));
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : stripFences(raw));
         replyText = parsed.reply ?? raw;
         score = parsed.score ?? null;
       } catch {}
