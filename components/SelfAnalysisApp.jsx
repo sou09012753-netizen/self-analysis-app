@@ -276,7 +276,7 @@ export default function SelfAnalysisApp() {
 
     fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${session.token}` } })
       .then(r => r.json())
-      .then(({ sessionData }) => { if (sessionData) applyData(sessionData); })
+      .then(({ sessionData }) => { if (sessionData && sessionData.userName) applyData(sessionData); })
       .catch(() => {})
       .finally(() => { setAuthChecking(false); });
   }, []);

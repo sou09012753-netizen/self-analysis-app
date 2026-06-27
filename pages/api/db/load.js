@@ -18,7 +18,9 @@ export default async function handler(req, res) {
       .single();
 
     if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
-    return res.json({ sessionData: data?.session_data || null });
+    const sd = data?.session_data;
+    const isEmpty = !sd || Object.keys(sd).length === 0;
+    return res.json({ sessionData: isEmpty ? null : sd });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
