@@ -190,8 +190,10 @@ export default function CoachPage() {
       });
       const json = await r.json();
       if (json.questions) {
-        setSessionQuestions(json.questions.questions_text);
-        setQuestionsUpdatedAt(json.questions.updated_at);
+        if (selectedClientRef.current?.id === clientId) {
+          setSessionQuestions(json.questions.questions_text);
+          setQuestionsUpdatedAt(json.questions.updated_at);
+        }
         return;
       }
     } catch {}
@@ -256,13 +258,15 @@ export default function CoachPage() {
       });
       const json = await r.json();
       if (json.report) {
-        setReportText(json.report.report_text);
-        setReportUpdatedAt(json.report.updated_at);
+        if (selectedClientRef.current?.id === clientId) {
+          setReportText(json.report.report_text);
+          setReportUpdatedAt(json.report.updated_at);
+        }
         return;
       }
       await doGenerateReport(clientId, userName, sessionData, workResponses);
     } catch {
-      setReportText('');
+      if (selectedClientRef.current?.id === clientId) setReportText('');
     }
   };
 
