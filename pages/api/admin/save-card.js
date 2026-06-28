@@ -35,7 +35,8 @@ export default async function handler(req, res) {
   const { error: updateError } = await supabase
     .from('coaching_users')
     .update({ session_data: sessionData, updated_at: new Date().toISOString() })
-    .eq('id', userId);
+    .eq('id', userId)
+    .eq('coach_id', coach.id);
 
   if (updateError) return res.status(500).json({ error: updateError.message });
 
