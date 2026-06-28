@@ -14,6 +14,16 @@ export default async function handler(req, res) {
     const { userName, sessionData, coachId } = req.body;
     if (!userName) return res.status(400).json({ error: 'Missing userName' });
 
+    const { data: existing } = await supabase
+      .from('coaching_users')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!existing && !coachId) {
+      return res.status(400).json({ error: 'coachId is required for initial save' });
+    }
+
     const payload = {
       id: user.id,
       user_name: userName,
