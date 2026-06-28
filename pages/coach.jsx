@@ -34,21 +34,21 @@ const renderMd = (text) => {
   if (!text) return null;
   return text.split('\n').map((line, i) => {
     if (line.startsWith('# '))   return <h2 key={i} style={{ color: C.text, fontSize: '18px', fontWeight: '300', margin: '0 0 20px' }}>{inlineBold(line.slice(2))}</h2>;
-    if (line.startsWith('## '))  return <h3 key={i} style={{ color: C.text, fontSize: '14px', fontWeight: '500', margin: '24px 0 12px', borderBottom: `1px solid ${C.border}`, paddingBottom: '6px' }}>{inlineBold(line.slice(3))}</h3>;
-    if (line.startsWith('### ')) return <h4 key={i} style={{ color: C.gold, fontSize: '11px', letterSpacing: '0.15em', margin: '16px 0 8px', fontWeight: '400' }}>{inlineBold(line.slice(4))}</h4>;
-    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '5px 0', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
-    if (line.startsWith('- '))   return <p key={i} style={{ color: '#bbb', fontSize: '13px', margin: '4px 0', lineHeight: '1.9', display: 'flex', gap: '8px' }}><span style={{ color: C.gold, flexShrink: 0 }}>·</span>{inlineBold(line.slice(2))}</p>;
+    if (line.startsWith('## '))  return <h3 key={i} style={{ color: C.text, fontSize: '14px', fontWeight: '500', margin: '28px 0 12px', borderBottom: `1px solid ${C.border}`, paddingBottom: '6px' }}>{inlineBold(line.slice(3))}</h3>;
+    if (line.startsWith('### ')) return <h4 key={i} style={{ color: C.gold, fontSize: '11px', letterSpacing: '0.15em', margin: '20px 0 8px', fontWeight: '400' }}>{inlineBold(line.slice(4))}</h4>;
+    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '8px 0', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
+    if (line.startsWith('- '))   return <p key={i} style={{ color: '#bbb', fontSize: '13px', margin: '6px 0', lineHeight: '1.9', display: 'flex', gap: '8px' }}><span style={{ color: C.gold, flexShrink: 0 }}>·</span>{inlineBold(line.slice(2))}</p>;
     if (line.match(/^\*\*(.+?)：\*\*\s*(.*)/)) {
       const [, label, rest] = line.match(/^\*\*(.+?)：\*\*\s*(.*)/);
-      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '6px 0', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{inlineBold(rest)}</p>;
+      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '10px 0 6px', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{inlineBold(rest)}</p>;
     }
     if (line.match(/^\*\*(.+?):\*\*\s*(.*)/)) {
       const [, label, rest] = line.match(/^\*\*(.+?):\*\*\s*(.*)/);
-      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '6px 0', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{inlineBold(rest)}</p>;
+      return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '10px 0 6px', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{inlineBold(rest)}</p>;
     }
     if (line === '---') return <div key={i} style={{ height: '1px', background: C.border, margin: '20px 0' }} />;
-    if (!line.trim())  return <div key={i} style={{ height: '5px' }} />;
-    return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '3px 0', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
+    if (!line.trim())  return <div key={i} style={{ height: '14px' }} />;
+    return <p key={i} style={{ color: '#ccc', fontSize: '13px', margin: '6px 0', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
   });
 };
 
