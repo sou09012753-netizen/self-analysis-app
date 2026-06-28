@@ -7,6 +7,7 @@ export default async function handler(req, res) {
   const { adminPassword: pw, email, userPassword, userName, coachId } = req.body;
   if (pw !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
   if (!email || !userPassword) return res.status(400).json({ error: 'email と userPassword は必須です' });
+  if (!coachId) return res.status(400).json({ error: '担当コーチの選択は必須です' });
 
   const supabase = getSupabase();
   const { data, error } = await supabase.auth.admin.createUser({

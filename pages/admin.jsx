@@ -184,7 +184,7 @@ export default function AdminPage() {
   };
 
   const handleCreateUser = async () => {
-    if (!newEmail.trim() || !newPassword || isCreating) return;
+    if (!newEmail.trim() || !newPassword || !selectedCoachId || isCreating) return;
     setIsCreating(true);
     setCreateError('');
     setCreateSuccess('');
@@ -421,7 +421,7 @@ export default function AdminPage() {
                       value={selectedCoachId} onChange={e => setSelectedCoachId(e.target.value)}
                       style={{ ...inputStyle, color: selectedCoachId ? '#f5f0e8' : C.dim }}
                     >
-                      <option value="">担当コーチを選択（任意）</option>
+                      <option value="" disabled>-- 担当コーチを選択（必須）</option>
                       {coaches.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
@@ -432,8 +432,8 @@ export default function AdminPage() {
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
                     onClick={handleCreateUser}
-                    disabled={!newEmail.trim() || !newPassword || isCreating}
-                    style={{ padding: '11px 22px', border: 'none', borderRadius: '4px', background: (newEmail.trim() && newPassword) ? C.gold : '#1a1a1a', color: (newEmail.trim() && newPassword) ? '#0a0a0a' : C.dim, cursor: (newEmail.trim() && newPassword) ? 'pointer' : 'not-allowed', fontSize: '12px', fontFamily: C.font }}
+                    disabled={!newEmail.trim() || !newPassword || !selectedCoachId || isCreating}
+                    style={{ padding: '11px 22px', border: 'none', borderRadius: '4px', background: (newEmail.trim() && newPassword && selectedCoachId) ? C.gold : '#1a1a1a', color: (newEmail.trim() && newPassword && selectedCoachId) ? '#0a0a0a' : C.dim, cursor: (newEmail.trim() && newPassword && selectedCoachId) ? 'pointer' : 'not-allowed', fontSize: '12px', fontFamily: C.font }}
                   >
                     {isCreating ? '作成中...' : '追加'}
                   </button>
