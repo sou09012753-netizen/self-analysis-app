@@ -11,6 +11,16 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+    const { data: clientRow } = await supabase
+      .from('coaching_users')
+      .select('coach_id')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!clientRow || clientRow.coach_id !== coach.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     try {
       const { data, error } = await supabase
         .from('coach_session_questions')
@@ -27,6 +37,16 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const { userId, questionsText } = req.body;
     if (!userId || !questionsText) return res.status(400).json({ error: 'Missing fields' });
+
+    const { data: clientRow } = await supabase
+      .from('coaching_users')
+      .select('coach_id')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!clientRow || clientRow.coach_id !== coach.id) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     try {
       const { data: existing } = await supabase
         .from('coach_session_questions')
