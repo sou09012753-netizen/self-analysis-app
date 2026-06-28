@@ -1,7 +1,8 @@
 import { getSupabase } from '../../../lib/supabase';
 
 export default async function handler(req, res) {
-  const adminPassword = process.env.ADMIN_PASSWORD || 'sen-admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) return res.status(500).json({ error: 'Server misconfiguration' });
 
   if (req.method === 'GET') {
     const { password } = req.query;

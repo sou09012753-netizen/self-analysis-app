@@ -3,7 +3,8 @@ import { getSupabase } from '../../../lib/supabase';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const adminPassword = process.env.ADMIN_PASSWORD || 'sen-admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) return res.status(500).json({ error: 'Server misconfiguration' });
   const { adminPassword: pw, email, userPassword, userName, coachId } = req.body;
   if (pw !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
   if (!email || !userPassword) return res.status(400).json({ error: 'email と userPassword は必須です' });
