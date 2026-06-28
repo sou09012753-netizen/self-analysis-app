@@ -117,20 +117,27 @@ export default function AdminPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const saved = sessionStorage.getItem('admin_authed');
-    const savedPw = sessionStorage.getItem('admin_pw');
-    if (saved === '1' && savedPw) {
-      setPw(savedPw);
+    if (saved === '1') {
       setAuthed(true);
-      fetchUsers(savedPw);
-      fetchCoaches(savedPw);
+      fetchUsers();
+      fetchCoaches();
     }
   }, []);
 
-  const fetchUsers = async (password) => {
+  const handleSessionExpired = () => {
+    sessionStorage.removeItem('admin_authed');
+    setAuthed(false);
+    setPw('');
+    setUsers([]);
+    setCoaches([]);
+  };
+
+  const fetchUsers = async () => {
     setIsLoading(true);
     setLoadError('');
     try {
-      const res = await fetch(`/api/db/users?password=${encodeURIComponent(password)}`);
+      const res = await fetch('/api/db/users');
+      if (res.status === 401) { handleSessionExpired(); return; }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'データの取得に失敗しました');
       setUsers(json.users || []);
@@ -141,9 +148,10 @@ export default function AdminPage() {
     }
   };
 
-  const fetchCoaches = async (password) => {
+  const fetchCoaches = async () => {
     try {
-      const res = await fetch(`/api/admin/coaches?password=${encodeURIComponent(password)}`);
+      const res = await fetch('/api/admin/coaches');
+      if (res.status === 401) { handleSessionExpired(); return; }
       const json = await res.json();
       setCoaches(json.coaches || []);
     } catch {}
@@ -161,10 +169,9 @@ export default function AdminPage() {
       });
       if (res.ok) {
         sessionStorage.setItem('admin_authed', '1');
-        sessionStorage.setItem('admin_pw', pw);
         setAuthed(true);
-        fetchUsers(pw);
-        fetchCoaches(pw);
+        fetchUsers();
+        fetchCoaches();
       } else {
         setLoginError('パスワードが違います');
       }
@@ -174,9 +181,9 @@ export default function AdminPage() {
     setIsLoggingIn(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/admin-logout', { method: 'POST' });
     sessionStorage.removeItem('admin_authed');
-    sessionStorage.removeItem('admin_pw');
     setAuthed(false);
     setPw('');
     setUsers([]);
@@ -193,11 +200,10 @@ export default function AdminPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          adminPassword: pw,
           email: newEmail.trim(),
           userPassword: newPassword,
-          userName: newUserName.trim() || undefined,
-          coachId: selectedCoachId || undefined,
+          userName: newUserName.trim(),
+          coachId: selectedCoachId,
         }),
       });
       const json = await res.json();
@@ -222,7 +228,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/coaches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPassword: pw, name: newCoachName.trim(), passcode: newCoachPasscode }),
+        body: JSON.stringify({ name: newCoachName.trim(), passcode: newCoachPasscode }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'コーチ作成に失敗しました');
@@ -292,7 +298,7 @@ export default function AdminPage() {
                 </button>
               )}
               <button
-                onClick={() => { fetchUsers(pw); fetchCoaches(pw); }}
+                onClick={() => { fetchUsers(); fetchCoaches(); }}
                 style={{ padding: '10px 18px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.muted, fontSize: '12px', cursor: 'pointer', fontFamily: C.font }}
               >
                 更新

@@ -1,12 +1,11 @@
 import { getSupabase } from '../../../lib/supabase';
+import { verifyAdminCookie } from '../../../lib/adminAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
+  if (!verifyAdminCookie(req)) return res.status(401).json({ error: 'Unauthorized' });
 
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) return res.status(500).json({ error: 'Server misconfiguration' });
-  const { adminPassword: pw, email, userPassword, userName, coachId } = req.body;
-  if (pw !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+  const { email, userPassword, userName, coachId } = req.body;
   if (!email || !userPassword) return res.status(400).json({ error: 'email と userPassword は必須です' });
   if (!userName || !userName.trim()) return res.status(400).json({ error: 'userName は必須です' });
   if (!coachId) return res.status(400).json({ error: '担当コーチの選択は必須です' });

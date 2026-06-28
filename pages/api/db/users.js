@@ -1,12 +1,9 @@
 import { getSupabase } from '../../../lib/supabase';
+import { verifyAdminCookie } from '../../../lib/adminAuth';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
-
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) return res.status(500).json({ error: 'Server misconfiguration' });
-  const { password } = req.query;
-  if (password !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+  if (!verifyAdminCookie(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const supabase = getSupabase();

@@ -1,13 +1,12 @@
 import { getSupabase } from '../../../lib/supabase';
+import { verifyAdminCookie } from '../../../lib/adminAuth';
 
 export default async function handler(req, res) {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) return res.status(500).json({ error: 'Server misconfiguration' });
+  if (!verifyAdminCookie(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const supabase = getSupabase();
 
   if (req.method === 'GET') {
-    const { password } = req.query;
-    if (password !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
-    const supabase = getSupabase();
     const { data, error } = await supabase
       .from('coaches')
       .select('id, name, passcode, created_at')
@@ -17,13 +16,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { adminPassword: pw, name, passcode } = req.body;
-    if (pw !== adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+    const { name, passcode } = req.body;
     if (!name || !passcode) return res.status(400).json({ error: 'name と passcode は必須です' });
     if (passcode.length !== 4 || !/^\d+$/.test(passcode)) {
       return res.status(400).json({ error: 'パスコードは4桁の数字で設定してください' });
     }
-    const supabase = getSupabase();
     const { data, error } = await supabase.from('coaches').insert({ name, passcode }).select().single();
     if (error) return res.status(400).json({ error: error.message });
     return res.json({ ok: true, coach: data });
