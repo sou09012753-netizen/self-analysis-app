@@ -1,4 +1,12 @@
+import crypto from 'crypto';
 import { getAdminSessionToken } from '../../lib/adminAuth';
+
+// Hash both to fixed-length buffers before comparing, preventing length-based timing leak
+function safeCompare(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 const MAX_ATTEMPTS = 10;
 const LOCK_MS = 15 * 60 * 1000; // 15 minutes
@@ -27,7 +35,7 @@ export default function handler(req, res) {
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminPassword) return res.status(500).json({ ok: false, error: 'Server misconfiguration' });
 
-  if (password !== adminPassword) {
+  if (!safeCompare(password, adminPassword)) {
     const newCount = record.count + 1;
     const lockedUntil = newCount >= MAX_ATTEMPTS ? now + LOCK_MS : null;
     attempts.set(ip, { count: newCount, lockedUntil });
