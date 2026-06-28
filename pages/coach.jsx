@@ -205,17 +205,19 @@ export default function CoachPage() {
       });
       const json = await r.json();
       const text = json.text || '';
-      setSessionQuestions(text);
-      setQuestionsUpdatedAt(new Date().toISOString());
+      if (selectedClientRef.current?.id === clientId) {
+        setSessionQuestions(text);
+        setQuestionsUpdatedAt(new Date().toISOString());
+      }
       fetch('/api/admin/session-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
         body: JSON.stringify({ userId: clientId, questionsText: text }),
       }).catch(() => {});
     } catch {
-      setSessionQuestions('');
+      if (selectedClientRef.current?.id === clientId) setSessionQuestions('');
     }
-    setIsGeneratingQuestions(false);
+    if (selectedClientRef.current?.id === clientId) setIsGeneratingQuestions(false);
   };
 
   const saveReport = async (clientId, text) => {
@@ -239,12 +241,12 @@ export default function CoachPage() {
       });
       const json = await r.json();
       const text = json.text || '';
-      setReportText(text);
+      if (selectedClientRef.current?.id === clientId) setReportText(text);
       if (text) await saveReport(clientId, text);
     } catch {
-      setReportText('');
+      if (selectedClientRef.current?.id === clientId) setReportText('');
     }
-    setIsGeneratingReport(false);
+    if (selectedClientRef.current?.id === clientId) setIsGeneratingReport(false);
   };
 
   const loadOrGenerateReport = async (clientId, userName, sessionData, workResponses) => {
