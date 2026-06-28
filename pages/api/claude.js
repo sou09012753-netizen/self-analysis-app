@@ -65,10 +65,17 @@ ${depthAngle}
       let score = null;
       try {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : stripFences(raw));
+        const candidate = jsonMatch ? jsonMatch[0] : stripFences(raw);
+        // 改行など制御文字が混入すると JSON.parse が落ちるため除去してから parse
+        const sanitized = candidate.replace(/[\n\r\t]/g, ' ');
+        const parsed = JSON.parse(sanitized);
         replyText = parsed.reply ?? raw;
         score = parsed.score ?? null;
-      } catch {}
+      } catch {
+        // parse が完全に失敗した場合は "reply": "..." を regex で直接抜き出す
+        const m = raw.match(/"reply"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+        if (m) replyText = m[1].replace(/\\n/g, '\n');
+      }
       return res.json({ text: replyText, score });
     }
 
