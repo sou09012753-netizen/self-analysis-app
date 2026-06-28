@@ -457,7 +457,7 @@ ${actionSection3}`;
 
 **優先2：**（次点テーマ。理由を1文で）`;
 
-      const text = await callClaude(system, [{ role: 'user', content }], 1500);
+      const text = await callClaude(system, [{ role: 'user', content }], 2500);
       return res.json({ text });
     }
 
