@@ -800,14 +800,30 @@ ${body}
                               <div style={{ width: '2px', height: '12px', background: C.dim, borderRadius: '1px', flexShrink: 0 }} />
                               <p style={{ color: C.muted, fontSize: '10px', letterSpacing: '0.2em', margin: 0 }}>{phase.title.toUpperCase()}</p>
                             </div>
-                            {phaseAnswers.map(({ q, a }) => (
-                              a ? (
-                                <div key={q} style={{ marginBottom: '20px', paddingLeft: '10px', borderLeft: `1px solid ${C.border}` }}>
+                            {phaseAnswers.map(({ q, a, key: qKey }) => {
+                              if (!a) return null;
+                              const thread = sess?.conversations?.[qKey]?.slice(1) || [];
+                              return (
+                                <div key={q} style={{ marginBottom: '24px', paddingLeft: '10px', borderLeft: `1px solid ${C.border}` }}>
                                   <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.7', marginBottom: '6px' }}>{q}</p>
-                                  <p style={{ color: '#d4d0c8', fontSize: '13px', lineHeight: '1.9', margin: 0 }}>{a}</p>
+                                  <p style={{ color: '#d4d0c8', fontSize: '13px', lineHeight: '1.9', margin: thread.length ? '0 0 12px' : 0 }}>{a}</p>
+                                  {thread.length > 0 && (
+                                    <div style={{ paddingLeft: '12px', borderLeft: `1px solid ${C.gold}33` }}>
+                                      {thread.map((msg, i) => (
+                                        msg.role === 'assistant' ? (
+                                          <div key={i} style={{ marginBottom: '6px', marginTop: i === 0 ? 0 : '10px' }}>
+                                            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.15em', marginBottom: '4px' }}>深掘り</p>
+                                            <p style={{ color: C.muted, fontSize: '12px', lineHeight: '1.8', margin: 0 }}>{msg.content}</p>
+                                          </div>
+                                        ) : (
+                                          <p key={i} style={{ color: '#c8c4bc', fontSize: '13px', lineHeight: '1.9', margin: '6px 0 0', paddingLeft: '8px' }}>{msg.content}</p>
+                                        )
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                              ) : null
-                            ))}
+                              );
+                            })}
                           </div>
                         );
                       })}
