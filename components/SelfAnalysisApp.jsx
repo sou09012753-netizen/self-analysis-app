@@ -498,6 +498,10 @@ export default function SelfAnalysisApp() {
           setFollowUp(fu);
           setFollowupDepth(prev => prev + 1);
         } else {
+          if (conversationHistoryRef.current.length > 0) {
+            const fullHistory = [...conversationHistoryRef.current, { role: 'user', content: saved }];
+            patchSession(activeId, { conversations: { ...(session.conversations || {}), [key]: fullHistory } });
+          }
           conversationHistoryRef.current = [];
           setFollowUp('');
           setFollowupDepth(0);
