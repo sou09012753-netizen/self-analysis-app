@@ -104,6 +104,12 @@ export default function AdminPage() {
   const [createSuccess, setCreateSuccess] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
 
+  // パスワードリセット
+  const [resetingId, setResetingId]   = useState(null);
+  const [resetPw, setResetPw]         = useState('');
+  const [resetMsg, setResetMsg]       = useState({ type: '', text: '' });
+  const [isResettingPw, setIsResettingPw] = useState(false);
+
   // コーチ管理
   const [coaches, setCoaches]         = useState([]);
   const [showCreateCoachForm, setShowCreateCoachForm] = useState(false);
@@ -216,6 +222,29 @@ export default function AdminPage() {
       setCreateError(err.message);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleResetPassword = async (userId) => {
+    if (!resetPw || isResettingPw) return;
+    if (resetPw.length < 8) { setResetMsg({ type: 'err', text: '8文字以上で設定してください' }); return; }
+    setIsResettingPw(true);
+    setResetMsg({ type: '', text: '' });
+    try {
+      const res = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, newPassword: resetPw }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '変更に失敗しました');
+      setResetMsg({ type: 'ok', text: 'パスワードを変更しました' });
+      setResetPw('');
+      setTimeout(() => { setResetingId(null); setResetMsg({ type: '', text: '' }); }, 2000);
+    } catch (err) {
+      setResetMsg({ type: 'err', text: err.message });
+    } finally {
+      setIsResettingPw(false);
     }
   };
 
@@ -514,9 +543,37 @@ export default function AdminPage() {
                     >
                       CSV
                     </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setResetingId(resetingId === u.id ? null : u.id); setResetPw(''); setResetMsg({ type: '', text: '' }); }}
+                      style={{ padding: '7px 14px', background: 'transparent', border: `1px solid ${C.border2}`, borderRadius: '4px', color: C.muted, fontSize: '11px', cursor: 'pointer', fontFamily: C.font, whiteSpace: 'nowrap' }}
+                    >
+                      PW変更
+                    </button>
                     <span style={{ color: C.dim, fontSize: '16px', lineHeight: 1 }}>{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
+
+                {/* PW変更フォーム */}
+                {resetingId === u.id && (
+                  <div style={{ borderTop: `1px solid ${C.border}`, padding: '14px 24px', background: '#0c0c0c', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <input
+                      type="password" placeholder="新しいパスワード（8文字以上）"
+                      value={resetPw} onChange={e => setResetPw(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleResetPassword(u.id)}
+                      style={{ ...inputStyle, flex: '1', minWidth: '200px' }}
+                    />
+                    <button
+                      onClick={() => handleResetPassword(u.id)}
+                      disabled={!resetPw || isResettingPw}
+                      style={{ padding: '10px 16px', border: 'none', borderRadius: '4px', background: resetPw ? C.gold : '#1a1a1a', color: resetPw ? '#0a0a0a' : C.dim, cursor: (resetPw && !isResettingPw) ? 'pointer' : 'not-allowed', fontSize: '12px', fontFamily: C.font, whiteSpace: 'nowrap' }}
+                    >
+                      {isResettingPw ? '変更中...' : '設定する'}
+                    </button>
+                    {resetMsg.text && (
+                      <p style={{ color: resetMsg.type === 'ok' ? C.green : C.red, fontSize: '12px', margin: 0 }}>{resetMsg.text}</p>
+                    )}
+                  </div>
+                )}
 
                 {/* 展開：セッション詳細 */}
                 {isExpanded && (
