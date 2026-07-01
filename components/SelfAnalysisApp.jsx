@@ -180,18 +180,32 @@ const ghostBtn = (extra = {}) => ({
 const renderMd = (text) => {
   if (!text) return null;
   return text.split('\n').map((line, i) => {
-    if (line.startsWith('# '))   return <h2 key={i} style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 24px' }}>{line.slice(2)}</h2>;
-    if (line.startsWith('## '))  return <h3 key={i} style={{ color: C.text, fontSize: '16px', fontWeight: '400', margin: '28px 0 14px', borderBottom: `1px solid ${C.border}`, paddingBottom: '8px' }}>{line.slice(3)}</h3>;
-    if (line.startsWith('### ')) return <h4 key={i} style={{ color: C.gold, fontSize: '11px', letterSpacing: '0.2em', margin: '20px 0 10px', fontWeight: '400' }}>{line.slice(4)}</h4>;
-    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#ccc', fontSize: '14px', margin: '6px 0', lineHeight: '1.8' }}>{line}</p>;
-    if (line.startsWith('- '))   return <p key={i} style={{ color: '#bbb', fontSize: '14px', margin: '5px 0', lineHeight: '1.8', display: 'flex', gap: '8px' }}><span style={{ color: C.gold, flexShrink: 0 }}>·</span>{line.slice(2)}</p>;
+    if (line.startsWith('### ')) return (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '28px 0 12px' }}>
+        <div style={{ width: '3px', height: '14px', background: C.gold, borderRadius: '2px', flexShrink: 0 }} />
+        <span style={{ color: C.gold, fontSize: '12px', letterSpacing: '0.18em', fontWeight: '500' }}>{line.slice(4).toUpperCase()}</span>
+      </div>
+    );
+    if (line.startsWith('## ')) return (
+      <div key={i} style={{ margin: '36px 0 18px', paddingBottom: '12px', borderBottom: `1px solid ${C.border2}` }}>
+        <span style={{ color: C.text, fontSize: '15px', fontWeight: '400', letterSpacing: '0.04em' }}>{line.slice(3)}</span>
+      </div>
+    );
+    if (line.startsWith('# ')) return <h2 key={i} style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 28px', letterSpacing: '0.02em' }}>{line.slice(2)}</h2>;
+    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '6px 0 6px 14px', lineHeight: '1.9' }}>{line}</p>;
+    if (line.startsWith('- '))   return (
+      <div key={i} style={{ display: 'flex', gap: '10px', margin: '6px 0', alignItems: 'flex-start' }}>
+        <span style={{ color: C.gold, flexShrink: 0, marginTop: '3px', fontSize: '16px', lineHeight: 1 }}>·</span>
+        <p style={{ color: '#d0ccc4', fontSize: '14px', margin: 0, lineHeight: '1.9' }}>{line.slice(2)}</p>
+      </div>
+    );
     if (line.match(/^\*\*(.+?):\*\*\s*(.*)/)) {
       const [, label, rest] = line.match(/^\*\*(.+?):\*\*\s*(.*)/);
-      return <p key={i} style={{ color: '#ccc', fontSize: '14px', margin: '7px 0', lineHeight: '1.8' }}><span style={{ color: C.text, fontWeight: '500' }}>{label}：</span>{rest}</p>;
+      return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '8px 0', lineHeight: '1.9' }}><span style={{ color: C.text, fontWeight: '600' }}>{label}：</span>{rest}</p>;
     }
-    if (line === '---') return <div key={i} style={{ height: '1px', background: C.border, margin: '24px 0' }} />;
-    if (!line.trim())  return <div key={i} style={{ height: '6px' }} />;
-    return <p key={i} style={{ color: '#ccc', fontSize: '14px', margin: '4px 0', lineHeight: '1.8' }}>{line}</p>;
+    if (line === '---') return <div key={i} style={{ height: '1px', background: `linear-gradient(to right, ${C.gold}44, transparent)`, margin: '28px 0' }} />;
+    if (!line.trim())  return <div key={i} style={{ height: '8px' }} />;
+    return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '5px 0', lineHeight: '1.9' }}>{line}</p>;
   });
 };
 
@@ -295,6 +309,31 @@ export default function SelfAnalysisApp() {
   }, [data]);
 
   useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState !== 'visible' || !tokenRef.current) return;
+      fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${tokenRef.current}` } })
+        .then(r => r.json())
+        .then(({ sessionData }) => {
+          if (!sessionData?.sessions) return;
+          setData(prev => {
+            if (!prev) return prev;
+            const updatedSessions = { ...prev.sessions };
+            for (const id of [1, 2, 3]) {
+              const sid = String(id);
+              if (sessionData.sessions[sid]) {
+                updatedSessions[sid] = { ...updatedSessions[sid], ...sessionData.sessions[sid] };
+              }
+            }
+            return { ...prev, sessions: updatedSessions };
+          });
+        })
+        .catch(() => {});
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+
+  useEffect(() => {
     if (view !== 'session-active' || !activeId || !answer) { setSaveStatus(''); return; }
     setSaveStatus('saving');
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -339,7 +378,7 @@ export default function SelfAnalysisApp() {
             for (const id of [1, 2, 3]) {
               const sid = String(id);
               if (sessionData.sessions[sid]) {
-                updatedSessions[sid] = { ...updatedSessions[sid], unlocked: sessionData.sessions[sid].unlocked || false };
+                updatedSessions[sid] = { ...updatedSessions[sid], ...sessionData.sessions[sid] };
               }
             }
             return { ...prev, sessions: updatedSessions };
@@ -918,7 +957,7 @@ export default function SelfAnalysisApp() {
             </div>
             <h2 style={{ color: C.text, fontSize: '21px', fontWeight: '300', marginBottom: '6px' }}>{cfg.title}</h2>
             <p style={{ color: C.dim, fontSize: '12px', marginBottom: '32px' }}>{cfg.cardName}</p>
-            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '32px 36px', minHeight: '240px', marginBottom: '24px' }}>
+            <div style={{ background: C.surface, border: `1px solid ${C.border2}`, borderRadius: '12px', padding: '36px 40px', minHeight: '240px', marginBottom: '24px', boxShadow: `0 0 0 1px ${C.gold}18, 0 8px 40px rgba(0,0,0,0.4)` }}>
               {isSummarizing
                 ? (onelineText
                     ? <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -932,6 +971,8 @@ export default function SelfAnalysisApp() {
                       <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>{summaryError}</p>
                       <button onClick={() => runCompleteSession(activeId, data.sessions[String(activeId)].answers, data)} style={goldBtn(true)}>もう一度試す</button>
                     </div>
+                  : cardContent
+                  ? <div>{renderMd(cardContent)}</div>
                   : <div style={{ textAlign: 'center', padding: '40px 0' }}>
                       <div style={{ width: '32px', height: '1px', background: C.gold, margin: '0 auto 24px' }} />
                       <p style={{ color: C.text, fontSize: '17px', fontWeight: '300', lineHeight: '1.8', marginBottom: '10px' }}>コーチに送りました。</p>
