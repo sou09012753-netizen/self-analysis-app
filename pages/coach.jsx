@@ -128,6 +128,7 @@ export default function CoachPage() {
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [questionsOpen, setQuestionsOpen] = useState(true);
   const [questionsUpdatedAt, setQuestionsUpdatedAt] = useState(null);
+  const [allAnswersOpen, setAllAnswersOpen] = useState({1: true, 2: true, 3: true});
 
   // Session unlock states
   const [unlockingSession, setUnlockingSession] = useState(null);
@@ -753,16 +754,76 @@ ${body}
             {/* リアルタイム最新回答 */}
             <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '14px' }}>リアルタイム最新回答</p>
             {latest ? (
-              <div style={{ background: '#0a0f0a', border: `1px solid ${C.green}22`, borderRadius: '6px', padding: '16px 20px' }}>
+              <div style={{ background: '#0a0f0a', border: `1px solid ${C.green}22`, borderRadius: '6px', padding: '16px 20px', marginBottom: '32px' }}>
                 <p style={{ color: C.green, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '6px' }}>SESSION {latest.sessionId}</p>
                 <p style={{ color: C.dim, fontSize: '11px', marginBottom: '8px' }}>{latest.question}</p>
                 <p style={{ color: '#ccc', fontSize: '13px', lineHeight: '1.7' }}>{latest.answer}</p>
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: C.dim }}>
+              <div style={{ textAlign: 'center', padding: '40px 0', color: C.dim, marginBottom: '32px' }}>
                 <p style={{ fontSize: '13px' }}>クライアントの回答を待機中...</p>
               </div>
             )}
+
+            {/* 全回答一覧 */}
+            {clientData && [1, 2, 3].map(sid => {
+              const cfg = SESSIONS_MAP[sid];
+              const sess = clientData.sessions?.[sid];
+              if (!cfg) return null;
+              const answers = sess?.answers || {};
+              const totalQ = cfg.phases.reduce((s, p) => s + p.questions.length, 0);
+              const answeredQ = Object.keys(answers).length;
+              if (answeredQ === 0) return null;
+              const isOpen = allAnswersOpen[sid];
+              return (
+                <div key={sid} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '16px', overflow: 'hidden' }}>
+                  <div
+                    onClick={() => setAllAnswersOpen(o => ({ ...o, [sid]: !o[sid] }))}
+                    style={{ background: C.surface, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>SESSION {sid} — 全回答</p>
+                      <span style={{ color: answeredQ >= totalQ ? C.gold : C.muted, fontSize: '10px' }}>{answeredQ}/{totalQ}問</span>
+                      {sess?.status === 'completed' && <span style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.1em' }}>COMPLETED</span>}
+                    </div>
+                    <span style={{ color: C.dim, fontSize: '12px' }}>{isOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {isOpen && (
+                    <div style={{ padding: '20px 24px', background: '#080808' }}>
+                      {cfg.phases.map((phase, pi) => {
+                        const phaseAnswers = phase.questions.map((q, qi) => ({ q, a: answers[`${pi}-${qi}`] || null, key: `${pi}-${qi}` }));
+                        const hasAny = phaseAnswers.some(x => x.a);
+                        if (!hasAny) return null;
+                        return (
+                          <div key={pi} style={{ marginBottom: '28px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                              <div style={{ width: '2px', height: '12px', background: C.dim, borderRadius: '1px', flexShrink: 0 }} />
+                              <p style={{ color: C.muted, fontSize: '10px', letterSpacing: '0.2em', margin: 0 }}>{phase.title.toUpperCase()}</p>
+                            </div>
+                            {phaseAnswers.map(({ q, a }) => (
+                              a ? (
+                                <div key={q} style={{ marginBottom: '20px', paddingLeft: '10px', borderLeft: `1px solid ${C.border}` }}>
+                                  <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.7', marginBottom: '6px' }}>{q}</p>
+                                  <p style={{ color: '#d4d0c8', fontSize: '13px', lineHeight: '1.9', margin: 0 }}>{a}</p>
+                                </div>
+                              ) : null
+                            ))}
+                          </div>
+                        );
+                      })}
+                      {sess?.insights && Object.keys(sess.insights).length > 0 && (
+                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: `1px solid ${C.border}` }}>
+                          <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '12px' }}>気づきメモ</p>
+                          {Object.entries(sess.insights).map(([key, note]) => (
+                            note ? <p key={key} style={{ color: '#888', fontSize: '12px', lineHeight: '1.8', marginBottom: '6px' }}>· {note}</p> : null
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
           </div>
         </div>
