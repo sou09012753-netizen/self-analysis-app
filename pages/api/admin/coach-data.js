@@ -1,5 +1,6 @@
 import { getSupabase } from '../../../lib/supabase';
 import { validateCoachPasscode } from '../../../lib/coachAuth';
+import { MAX_CLIENTS_PER_COACH } from '../../../lib/limits';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
@@ -16,9 +17,10 @@ export default async function handler(req, res) {
       .from('coaching_users')
       .select('id, user_name, updated_at')
       .eq('coach_id', coach.id)
+      .is('archived_at', null)
       .order('updated_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ clients: data || [], coachName: coach.name });
+    return res.json({ clients: data || [], coachName: coach.name, maxClients: MAX_CLIENTS_PER_COACH });
   }
 
   if (action === 'answers') {
