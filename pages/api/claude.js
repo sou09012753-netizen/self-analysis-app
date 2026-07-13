@@ -1,5 +1,30 @@
+import { getSupabase } from '../../lib/supabase';
+import { validateCoachPasscode } from '../../lib/coachAuth';
+import { answerWithFollowups } from '../../lib/followups';
+
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
+
+// ロールごとに許可する type（ここに無い type は 400）
+const ALLOWED_TYPES = {
+  client: ['followup', 'reframe', 'reflect', 'onelineinsight', 'summary', 'generate', 'work'],
+  coach: ['sessionquestions', 'report', 'summary'],
+};
+
+// 既存エンドポイントと同じ検証ロジックを再利用（新しい秘密は作らない）
+const authenticate = async (req) => {
+  const passcode = req.headers['x-coach-passcode'];
+  if (passcode) {
+    const coach = await validateCoachPasscode(passcode);
+    return coach ? 'coach' : null;
+  }
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token) {
+    const { data: { user }, error } = await getSupabase().auth.getUser(token);
+    return (!error && user) ? 'client' : null;
+  }
+  return null;
+};
 
 const stripFences = (s) => s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
@@ -21,7 +46,13 @@ const callClaude = async (system, messages, maxTokens) => {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const role = await authenticate(req);
+  if (!role) return res.status(401).json({ error: 'Session expired' });
+
   const { type } = req.body;
+  if (!ALLOWED_TYPES[role].includes(type)) {
+    return res.status(400).json({ error: 'Invalid type' });
+  }
 
   try {
     if (type === 'followup') {
@@ -414,8 +445,9 @@ ${actionSection3}`;
         content += `=== SESSION ${sid}「${meta.title}」===\n`;
         for (const [pi, phase] of meta.phases.entries()) {
           for (const [qi, q] of phase.questions.entries()) {
-            const a = sess.answers[`${pi}-${qi}`];
-            if (a) content += `Q: ${q}\nA: ${a}\n\n`;
+            const key = `${pi}-${qi}`;
+            if (!sess.answers[key]) continue;
+            content += `Q: ${q}\nA: ${answerWithFollowups(sess, key)}\n\n`;
           }
         }
         if (sess.summary) content += `【セッションまとめ（AI生成）】\n${sess.summary}\n\n`;
@@ -505,8 +537,9 @@ ${actionSection3}`;
         content += `=== SESSION ${sid}「${meta.title}」===\n`;
         for (const [pi, phase] of meta.phases.entries()) {
           for (const [qi, q] of phase.questions.entries()) {
-            const a = sess.answers[`${pi}-${qi}`];
-            if (a) content += `Q: ${q}\nA: ${a}\n\n`;
+            const key = `${pi}-${qi}`;
+            if (!sess.answers[key]) continue;
+            content += `Q: ${q}\nA: ${answerWithFollowups(sess, key)}\n\n`;
           }
         }
         if (sess.summary) content += `【セッションまとめ】\n${sess.summary}\n\n`;
