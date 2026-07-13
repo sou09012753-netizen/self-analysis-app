@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
+import { answerWithFollowups } from '../lib/followups';
 
 const C = {
   bg: '#050505', text: '#f0ebe0', muted: '#888', dim: '#444',
@@ -203,7 +204,7 @@ export default function CoachPage() {
     try {
       const r = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
         body: JSON.stringify({ type: 'sessionquestions', userName, sessionData }),
       });
       const json = await r.json();
@@ -239,7 +240,7 @@ export default function CoachPage() {
     try {
       const r = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
         body: JSON.stringify({ type: 'report', userName, sessionData, workResponses }),
       });
       const json = await r.json();
@@ -341,11 +342,10 @@ export default function CoachPage() {
       const cfg = SESSIONS_MAP[sessionId];
       if (!cfg) return;
       const sess = clientData.sessions?.[sessionId] || {};
-      const answers = sess.answers || {};
 
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
-        qa: phase.questions.map((q, qi) => ({ question: q, answer: answers[`${pi}-${qi}`] || '未回答' })),
+        qa: phase.questions.map((q, qi) => ({ question: q, answer: answerWithFollowups(sess, `${pi}-${qi}`) })),
       }));
 
       const previousSummaries = [];
@@ -356,7 +356,7 @@ export default function CoachPage() {
 
       const r = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
         body: JSON.stringify({ type: 'summary', sessionNumber: sessionId, userName: selectedClient.user_name, allAnswers, previousSummaries }),
       });
       const json = await r.json();
@@ -711,7 +711,7 @@ ${body}
                           try {
                             const r = await fetch('/api/claude', {
                               method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
+                              headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
                               body: JSON.stringify({ type: 'sessionquestions', userName: selectedClient.user_name, sessionData: clientData }),
                             });
                             const json = await r.json();

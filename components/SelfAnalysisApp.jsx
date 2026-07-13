@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { answerWithFollowups, getPendingFollowup } from '../lib/followups';
 
 const DRAFT_KEY = 'coaching_sen_draft';
 const SESSION_KEY = 'coaching_sen_token';
@@ -209,12 +210,19 @@ const renderMd = (text) => {
   });
 };
 
-const callAPI = async (body) => {
+// 401検出用。コンポーネントがマウント時に登録する
+let onSessionExpired = null;
+
+const callAPI = async (body, token) => {
   const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    onSessionExpired?.();
+    throw new Error('SESSION_EXPIRED');
+  }
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json.text || '';
@@ -241,6 +249,7 @@ export default function SelfAnalysisApp() {
   const [onelineText, setOnelineText]   = useState('');
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [workContent, setWorkContent]   = useState(null);
   const [workAnswer, setWorkAnswer]     = useState('');
   const [isGeneratingWork, setIsGeneratingWork] = useState(false);
@@ -257,6 +266,35 @@ export default function SelfAnalysisApp() {
   const followupQuestionRef = useRef('');
   const followupIsLastRef = useRef(false);
   const conversationHistoryRef = useRef([]);
+
+  // 回答待ちの深掘りを conversations から復元する（リロード・セッション再入時）
+  const restoreFollowup = (session, cfg) => {
+    const pending = getPendingFollowup(session, cfg);
+    if (!pending) {
+      conversationHistoryRef.current = [];
+      setFollowUp('');
+      setFollowupDepth(0);
+      return;
+    }
+    followupKeyRef.current = pending.key;
+    followupQuestionRef.current = pending.question;
+    followupIsLastRef.current = Object.keys(session.answers || {}).length >= getTotalQ(cfg);
+    conversationHistoryRef.current = pending.history;
+    setFollowupDepth(pending.depth);
+    setFollowUp(pending.followUp);
+  };
+
+  useEffect(() => {
+    onSessionExpired = () => setSessionExpired(true);
+    return () => { onSessionExpired = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionExpired) return;
+    try { localStorage.removeItem(SESSION_KEY); } catch {}
+    const t = setTimeout(() => { window.location.href = '/login'; }, 2500);
+    return () => clearTimeout(t);
+  }, [sessionExpired]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -279,7 +317,9 @@ export default function SelfAnalysisApp() {
       setData(safe);
       const rid = String(safe.activeSessionId);
       if (rid && rid !== 'null' && safe.sessions[rid]?.status === 'in_progress') {
-        setActiveId(Number(safe.activeSessionId));
+        const id = Number(safe.activeSessionId);
+        setActiveId(id);
+        restoreFollowup(safe.sessions[rid], SESSIONS[id - 1]);
         setView('session-active');
         setResumeToast(true);
         setTimeout(() => setResumeToast(false), 3500);
@@ -419,9 +459,9 @@ export default function SelfAnalysisApp() {
       setView('session-summary');
       return;
     }
-    conversationHistoryRef.current = [];
-    setAnswer(''); setFollowUp(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setFollowupDepth(0); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
+    setAnswer(''); setSummaryText(''); setSummaryError(''); setSaveStatus(''); setInsight(''); setIsFollowingUp(false); setReflectText(''); setOnelineText('');
     setWorkFeedback(null); setWorkFeedbackAnswer('');
+    restoreFollowup(session, SESSIONS[id - 1]);
     if (session.status === 'not_started') patchSession(id, { status: 'in_progress' });
     saveData(prev => ({ ...prev, activeSessionId: id }));
 
@@ -447,7 +487,7 @@ export default function SelfAnalysisApp() {
 
   const showReflect = async (savedAnswer) => {
     try {
-      const result = await callAPI({ type: 'reflect', answer: savedAnswer });
+      const result = await callAPI({ type: 'reflect', answer: savedAnswer }, tokenRef.current);
       if (result && result.trim()) {
         setReflectText(result.trim());
         await new Promise(r => setTimeout(r, 3000));
@@ -474,8 +514,10 @@ export default function SelfAnalysisApp() {
     if (followUp) {
       const key = followupKeyRef.current;
       const question = followupQuestionRef.current;
-      const newAnswers = { ...session.answers, [key]: saved };
-      patchSession(activeId, { answers: newAnswers });
+      // answers は元の回答のまま。深掘り回答は conversations に追記して即保存する
+      const prevThread = session.conversations?.[key] || [];
+      const thread = [...prevThread, { role: 'user', content: saved }];
+      patchSession(activeId, { conversations: { ...(session.conversations || {}), [key]: thread } });
 
       try {
         const previousContext = activeId > 1
@@ -485,28 +527,25 @@ export default function SelfAnalysisApp() {
           type: 'followup',
           question,
           answer: saved,
-          conversationHistory: conversationHistoryRef.current,
+          conversationHistory: prevThread,
           depth: followupDepth,
           previousContext,
-        });
+        }, tokenRef.current);
         if (fu && fu !== '十分です') {
-          conversationHistoryRef.current = [
-            ...conversationHistoryRef.current,
-            { role: 'user', content: saved },
-            { role: 'assistant', content: fu },
-          ];
+          const nextThread = [...thread, { role: 'assistant', content: fu }];
+          patchSession(activeId, { conversations: { ...(session.conversations || {}), [key]: nextThread } });
+          conversationHistoryRef.current = nextThread;
           setFollowUp(fu);
           setFollowupDepth(prev => prev + 1);
         } else {
-          if (conversationHistoryRef.current.length > 0) {
-            const fullHistory = [...conversationHistoryRef.current, { role: 'user', content: saved }];
-            patchSession(activeId, { conversations: { ...(session.conversations || {}), [key]: fullHistory } });
-          }
+          // thread は保存済み（末尾 user = 深掘り完了）
           conversationHistoryRef.current = [];
           setFollowUp('');
           setFollowupDepth(0);
           if (fu === '十分です') await showReflect(saved);
-          if (followupIsLastRef.current) await runCompleteSession(activeId, newAnswers, data);
+          if (followupIsLastRef.current) {
+            await runCompleteSession(activeId, session.answers, { ...(session.conversations || {}), [key]: thread }, data);
+          }
         }
       } catch {
         setSaveStatus('error');
@@ -548,19 +587,24 @@ export default function SelfAnalysisApp() {
                 conversationHistory: [],
                 depth: 0,
                 previousContext,
-              }
+              },
+          tokenRef.current
         );
         if (fu && fu !== '十分です') {
-          conversationHistoryRef.current = confused
-            ? [{ role: 'user', content: `質問：${current.question}\n${saved}` }, { role: 'assistant', content: fu }]
-            : [{ role: 'user', content: `質問：${current.question}\n${saved}` }, { role: 'assistant', content: fu }];
+          // 深掘りが始まった時点で conversations を作って保存する（リロードで復元できるように）
+          const thread = [
+            { role: 'user', content: `質問：${current.question}\n${saved}` },
+            { role: 'assistant', content: fu },
+          ];
+          patchSession(activeId, { conversations: { ...(session.conversations || {}), [key]: thread } });
+          conversationHistoryRef.current = thread;
           setFollowUp(fu);
           setFollowupDepth(1);
         } else {
           setFollowUp('');
           setFollowupDepth(0);
           if (fu === '十分です') await showReflect(saved);
-          if (isLast) await runCompleteSession(activeId, newAnswers, data);
+          if (isLast) await runCompleteSession(activeId, newAnswers, session.conversations || {}, data);
         }
       } catch {
         setSaveStatus('error');
@@ -574,11 +618,14 @@ export default function SelfAnalysisApp() {
   const handleNext = async () => {
     setFollowupDepth(0);
     const cfg = SESSIONS[activeId - 1];
-    const answers = data.sessions?.[activeId]?.answers || {};
-    if (Object.keys(answers).length >= getTotalQ(cfg)) await runCompleteSession(activeId, answers, data);
+    const session = data.sessions?.[String(activeId)] || {};
+    const answers = session.answers || {};
+    if (Object.keys(answers).length >= getTotalQ(cfg)) {
+      await runCompleteSession(activeId, answers, session.conversations || {}, data);
+    }
   };
 
-  const runCompleteSession = async (sessionId, answers, currentData) => {
+  const runCompleteSession = async (sessionId, answers, conversations, currentData) => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
     setSummaryText(''); setSummaryError(''); setOnelineText(''); setIsSummarizing(true); setView('session-summary');
@@ -586,14 +633,17 @@ export default function SelfAnalysisApp() {
       const cfg = SESSIONS[sessionId - 1];
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
-        qa: phase.questions.map((q, qi) => ({ question: q, answer: answers[`${pi}-${qi}`] || '未回答' })),
+        qa: phase.questions.map((q, qi) => ({
+          question: q,
+          answer: answerWithFollowups({ answers, conversations }, `${pi}-${qi}`),
+        })),
       }));
       const previousSummaries = [];
       for (let i = 1; i < sessionId; i++) {
         if (currentData.sessions[String(i)]?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: currentData.sessions[String(i)].summary });
       }
-      callAPI({ type: 'onelineinsight', allAnswers }).then(text => { if (text) setOnelineText(text); }).catch(() => {});
-      const summary = await callAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries });
+      callAPI({ type: 'onelineinsight', allAnswers }, tokenRef.current).then(text => { if (text) setOnelineText(text); }).catch(() => {});
+      const summary = await callAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries }, tokenRef.current);
       setSummaryText(summary);
       saveData(prev => ({
         ...prev,
@@ -617,9 +667,9 @@ export default function SelfAnalysisApp() {
       const allSessionData = SESSIONS.map((cfg, idx) => {
         const id = idx + 1;
         const s = data.sessions[String(id)];
-        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: phase.questions.map((q, qi) => ({ question: q, answer: s.answers[`${pi}-${qi}`] || '未回答' })) })) };
+        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: phase.questions.map((q, qi) => ({ question: q, answer: answerWithFollowups(s, `${pi}-${qi}`) })) })) };
       });
-      const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData });
+      const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData }, tokenRef.current);
       saveData(prev => ({ ...prev, integratedDoc: doc }));
     } catch (err) {
       saveData(prev => ({ ...prev, integratedDoc: `エラー: ${err.message}` }));
@@ -641,7 +691,7 @@ export default function SelfAnalysisApp() {
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
     let t = `${bar}\nSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
-    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     return t;
@@ -655,7 +705,7 @@ export default function SelfAnalysisApp() {
     SESSIONS.forEach((cfg, idx) => {
       const id = idx + 1; const session = data.sessions[String(id)];
       t += `■ SESSION ${id}「${cfg.title}」\n\n`;
-      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${session.answers[k] || '（未回答）'}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
       t += '\n';
     });
     return t;
@@ -670,9 +720,10 @@ export default function SelfAnalysisApp() {
       const summary = data.sessions[String(sessionId)].summary;
       const res = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
         body: JSON.stringify({ type: 'work', sessionNumber: sessionId, summary }),
       });
+      if (res.status === 401) { setSessionExpired(true); return; }
       const json = await res.json();
       setWorkContent(json.work || null);
     } catch {}
@@ -699,6 +750,18 @@ export default function SelfAnalysisApp() {
   const allDone = data && data.sessions && [1,2,3].every(i => data.sessions[String(i)]?.status === 'completed');
 
   if (authChecking) return null;
+
+  if (sessionExpired) return (
+    <>
+      <Head><title>SEN 自己分析プログラム</title></Head>
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: C.font, padding: '24px' }}>
+        <div style={{ maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+          <p style={{ color: C.text, fontSize: '14px', lineHeight: '2.0', marginBottom: '24px' }}>セッションが切れました。<br />再ログインしてください。</p>
+          <button onClick={() => { window.location.href = '/login'; }} style={goldBtn(true)}>ログイン画面へ</button>
+        </div>
+      </div>
+    </>
+  );
 
   if (view === 'landing') return (
     <>
@@ -866,7 +929,7 @@ export default function SelfAnalysisApp() {
                   >スキップ</button>
                 </div>
               </div>
-            ) : current ? (
+            ) : (current || followUp || isFollowingUp) ? (
               <>
                 {reflectText ? (
                   <div style={{ textAlign: 'center', padding: '80px 0' }}>
