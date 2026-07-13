@@ -117,6 +117,11 @@ export default function CoachPage() {
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [createClientError, setCreateClientError] = useState('');
   const [createClientSuccess, setCreateClientSuccess] = useState('');
+  const [maxClients, setMaxClients] = useState(null);
+
+  // クライアントのアーカイブ（論理削除）
+  const [archivingId, setArchivingId] = useState(null);
+  const [archiveError, setArchiveError] = useState('');
 
   // Report states
   const [reportText, setReportText] = useState(null);
@@ -144,6 +149,7 @@ export default function CoachPage() {
     if (!r.ok) throw new Error('Invalid');
     const json = await r.json();
     setClients(json.clients || []);
+    setMaxClients(json.maxClients ?? null);
   };
 
   const setupRealtime = async () => {
@@ -335,6 +341,32 @@ export default function CoachPage() {
     setIsCreatingClient(false);
   };
 
+  const handleArchiveClient = async (c) => {
+    if (archivingId) return;
+    const ok = window.confirm(
+      `「${c.user_name}」をアーカイブしますか？\n\n` +
+      `・一覧から非表示になり、登録枠が1つ空きます\n` +
+      `・回答データは削除されません`
+    );
+    if (!ok) return;
+
+    setArchivingId(c.id);
+    setArchiveError('');
+    try {
+      const r = await fetch('/api/coach/archive-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: c.id }),
+      });
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error || 'アーカイブに失敗しました');
+      await loadClients(passcodeRef.current);
+    } catch (err) {
+      setArchiveError(err.message);
+    }
+    setArchivingId(null);
+  };
+
   const handleGenerateCard = async (sessionId) => {
     if (!selectedClient || !clientData) return;
     setGeneratingCard(sessionId);
@@ -492,16 +524,36 @@ ${body}
     </>
   );
 
-  if (phase === 'clients') return (
+  if (phase === 'clients') {
+    const isFull = maxClients != null && clients.length >= maxClients;
+
+    return (
     <>
       <Head><title>クライアント選択 — コーチ台本</title></Head>
       <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.font, padding: '48px 24px' }}>
         <div style={{ maxWidth: '520px', margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
-            <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>COACH MODE — クライアント選択</p>
+            <div>
+              <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>COACH MODE — クライアント選択</p>
+              {maxClients != null && (
+                <p style={{ color: isFull ? C.red : C.dim, fontSize: '11px', margin: '5px 0 0' }}>
+                  {clients.length} / {maxClients} 人
+                  {isFull ? '　（上限に達しています）' : `　残り ${maxClients - clients.length} 人`}
+                </p>
+              )}
+            </div>
             <button
-              onClick={() => { setShowCreateClient(true); setCreateClientError(''); setCreateClientSuccess(''); }}
-              style={{ padding: '8px 16px', border: `1px solid ${C.gold}66`, borderRadius: '4px', background: 'transparent', color: C.gold, fontSize: '11px', cursor: 'pointer', fontFamily: C.font }}
+              onClick={() => { if (isFull) return; setShowCreateClient(true); setCreateClientError(''); setCreateClientSuccess(''); }}
+              disabled={isFull}
+              title={isFull ? `クライアント登録は${maxClients}人までです。アーカイブすると枠が空きます。` : ''}
+              style={{
+                padding: '8px 16px', borderRadius: '4px', background: 'transparent',
+                fontSize: '11px', fontFamily: C.font,
+                border: `1px solid ${isFull ? C.border : C.gold + '66'}`,
+                color: isFull ? C.dim : C.gold,
+                cursor: isFull ? 'not-allowed' : 'pointer',
+                opacity: isFull ? 0.5 : 1,
+              }}
             >
               ＋ クライアントを追加
             </button>
@@ -548,6 +600,7 @@ ${body}
             </div>
           )}
           {createClientSuccess && <p style={{ color: C.green, fontSize: '12px', marginBottom: '16px' }}>{createClientSuccess}</p>}
+          {archiveError && <p style={{ color: C.red, fontSize: '12px', marginBottom: '16px' }}>{archiveError}</p>}
 
           {clients.length === 0 ? (
             <p style={{ color: C.dim, fontSize: '13px' }}>クライアントが見つかりません</p>
@@ -556,7 +609,20 @@ ${body}
               {clients.map(c => (
                 <div key={c.id} onClick={() => handleSelectClient(c)} style={{ padding: '18px 22px', border: `1px solid ${C.border}`, borderRadius: '6px', cursor: 'pointer', background: C.surface, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: C.text, fontSize: '15px' }}>{c.user_name}</span>
-                  <span style={{ color: C.dim, fontSize: '11px' }}>{c.updated_at ? new Date(c.updated_at).toLocaleDateString('ja-JP') : ''}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <span style={{ color: C.dim, fontSize: '11px' }}>{c.updated_at ? new Date(c.updated_at).toLocaleDateString('ja-JP') : ''}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleArchiveClient(c); }}
+                      disabled={archivingId === c.id}
+                      style={{
+                        padding: '5px 10px', borderRadius: '4px', background: 'transparent',
+                        border: `1px solid ${C.border2}`, color: C.dim, fontSize: '10px',
+                        fontFamily: C.font, cursor: archivingId === c.id ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {archivingId === c.id ? '処理中...' : 'アーカイブ'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -564,7 +630,8 @@ ${body}
         </div>
       </div>
     </>
-  );
+    );
+  }
 
   if (phase === 'session') {
     const latest = clientData ? getLatestAnswerEntry(clientData) : null;
