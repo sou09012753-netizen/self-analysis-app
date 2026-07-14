@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { answerWithFollowups } from '../lib/followups';
-import { normalizeScores } from '../lib/radar';
+import { normalizeScores, extractReasons } from '../lib/radar';
 import RadarPentagon from '../components/RadarPentagon';
 import RadarScoreList from '../components/RadarScoreList';
 
@@ -113,6 +113,8 @@ export default function CoachPage() {
   const [clientWorkResponses, setClientWorkResponses] = useState([]);
   // 五角形レーダー用スコア（radar_scores 列。session_data とは別管理）
   const [clientScores, setClientScores] = useState({});
+  // スコア生成の失敗はコーチにだけ伝える（本人には「スコア」の存在自体を見せない）
+  const [scoreError, setScoreError] = useState('');
 
   // クライアント追加
   const [showCreateClient, setShowCreateClient] = useState(false);
@@ -377,6 +379,7 @@ export default function CoachPage() {
   const handleGenerateCard = async (sessionId) => {
     if (!selectedClient || !clientData) return;
     setGeneratingCard(sessionId);
+    setScoreError('');
     try {
       const cfg = SESSIONS_MAP[sessionId];
       if (!cfg) return;
@@ -403,6 +406,14 @@ export default function CoachPage() {
       if (!summary) return;
       // 生のまま送る（reason を落とさない）。5軸が揃っているかだけ検証する
       const scores = normalizeScores(json.scores) ? json.scores : null;
+
+      // 失敗を黙って飲み込まない。カードは生成できているので、そこは伝える。
+      // 壊れたスコアでDBを汚さない設計（save-card 側の検証）はそのまま維持する
+      if (!scores) {
+        setScoreError('スコアの生成に失敗しました（カードは生成済み）。もう一度カードを生成すると再試行します。');
+      } else if (!extractReasons(scores)) {
+        setScoreError('根拠の生成に失敗しました（数値は生成済み）。もう一度カードを生成すると再試行します。');
+      }
 
       const saveRes = await fetch('/api/admin/save-card', {
         method: 'POST',
@@ -773,6 +784,13 @@ ${body}
                 </div>
               )}
             </div>
+
+            {/* スコア生成の失敗はコーチにだけ出す。本人画面には一切出さない */}
+            {scoreError && (
+              <div style={{ border: `1px solid ${C.red}44`, borderRadius: '8px', padding: '14px 20px', marginBottom: '24px', background: '#170a0a' }}>
+                <p style={{ color: C.red, fontSize: '12px', lineHeight: '1.7', margin: 0 }}>{scoreError}</p>
+              </div>
+            )}
 
             {/* 五角形レーダー（コーチ向け＝数値あり）。スコアが無ければ何も出ない */}
             {radarLayers.length > 0 && (

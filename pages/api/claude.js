@@ -398,7 +398,15 @@ ${actionSection3}`;
 2：一般論・短い・回避気味
 1：その領域について、まだほとんど言葉が出ていない（未踏）
 
-■ 各軸には reason（その値になった根拠）を必ず添える。reason はコーチだけが読む。
+■ 出力形式（違反は許されない）
+
+★各軸の値は必ずオブジェクト {"score": N, "reason": "..."} にする。
+★数値だけを書いてはならない。{"生き方": 4} のような平坦な形は禁止。
+★5軸すべてに reason を書く。空文字・省略は禁止。
+★JSONのみを出力する。コードフェンス(\`\`\`)・前置き・後書きを一切付けない。
+★reason の中で " を使わない（引用には「」を使う）。
+
+reason はコーチだけが読む。本人には表示されない。
 
 reason のルール（厳守）：
 - 書いてよいのは「観察」だけ。本人が何をどう書いたか、何に触れ、何に触れなかったか
@@ -411,15 +419,17 @@ reason の良い例：「『誰にも評価されなくても続ける』と明�
 reason の悪い例：「自己肯定感が低く、他人の評価に依存している」（← 性格の断定。禁止）
 
 <<<SCORES>>>
-{"生き方":{"score":N,"reason":"..."},"環境":{"score":N,"reason":"..."},"承認と動機":{"score":N,"reason":"..."},"行動":{"score":N,"reason":"..."},"自己コントロール":{"score":N,"reason":"..."}}`;
+{"生き方":{"score":4,"reason":"「誰にも評価されなくても続ける」と明言し、その理由まで自分の言葉で書いている。ただし具体的な場面には触れていない"},"環境":{"score":2,"reason":"話せる人の数だけを答え、その先の理由が一般論で止まっている"},"承認と動機":{"score":5,"reason":"褒められた時の話で感情が噴き出し、子どもの頃の具体的な場面まで出している"},"行動":{"score":3,"reason":"先送りしていることは書いているが、なぜ今日やらないかは自分の言葉で掘れていない"},"自己コントロール":{"score":1,"reason":"逃げた後に何をするかについて、まだほとんど言葉が出ていない"}}`;
 
       const messages = [{ role: 'user', content: JSON.stringify(allAnswers) }];
-      const raw = await callClaude(system, messages, 2800);
+      // 本文（元々1800で運用）＋ reason 5本で 2800 では切れうる。
+      // 途中で切れると <<<SCORES>>> 以降のJSONが尻切れになり scores が null になる。
+      const raw = await callClaude(system, messages, 4000);
 
       const [bodyRaw, scoreRaw = ''] = raw.split('<<<SCORES>>>');
       let scores = null;
       try {
-        const m = scoreRaw.match(/\{[\s\S]*\}/);
+        const m = stripFences(scoreRaw).match(/\{[\s\S]*\}/);
         if (m) scores = JSON.parse(m[0].replace(/[\n\r\t]/g, ' '));
       } catch {}
 
