@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { answerWithFollowups, getPendingFollowup } from '../lib/followups';
+import { normalizeScores } from '../lib/radar';
+// ★RadarScoreList（数値表示）は絶対に import しない。本人には数値を見せない。
+import RadarPentagon from './RadarPentagon';
 
 const DRAFT_KEY = 'coaching_sen_draft';
 const SESSION_KEY = 'coaching_sen_token';
@@ -228,6 +231,22 @@ const callAPI = async (body, token) => {
   return json.text || '';
 };
 
+// summary だけは本文に加えて五角形用スコアも受け取る
+const callSummaryAPI = async (body, token) => {
+  const res = await fetch('/api/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    onSessionExpired?.();
+    throw new Error('SESSION_EXPIRED');
+  }
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return { text: json.text || '', scores: normalizeScores(json.scores) };
+};
+
 export default function SelfAnalysisApp() {
   const [view, setView]           = useState('landing');
   const [data, setData]           = useState(null);
@@ -250,6 +269,9 @@ export default function SelfAnalysisApp() {
   const [resumeToast, setResumeToast]   = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  // 五角形レーダー用。{ "1": {...}, "2": {...}, "3": {...} }
+  // session_data とは別列（radar_scores）で管理される
+  const [radarScores, setRadarScores] = useState({});
   const [workContent, setWorkContent]   = useState(null);
   const [workAnswer, setWorkAnswer]     = useState('');
   const [isGeneratingWork, setIsGeneratingWork] = useState(false);
@@ -330,7 +352,10 @@ export default function SelfAnalysisApp() {
 
     fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${session.token}` } })
       .then(r => r.json())
-      .then(({ sessionData }) => { if (sessionData && sessionData.userName) applyData(sessionData); })
+      .then(({ sessionData, radarScores: rs }) => {
+        if (rs) setRadarScores(rs);
+        if (sessionData && sessionData.userName) applyData(sessionData);
+      })
       .catch(() => {})
       .finally(() => { setAuthChecking(false); });
   }, []);
@@ -625,6 +650,25 @@ export default function SelfAnalysisApp() {
     }
   };
 
+  // スコアを保存し、成功した場合だけ画面に出す。
+  // 保存に失敗したら五角形は出さない（DBに無いものを見せない）。
+  // カード本文は影響を受けない（本体機能をレーダーのために落とさない）。
+  const persistScores = async (sessionId, scores) => {
+    try {
+      const r = await fetch('/api/db/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
+        body: JSON.stringify({ sessionId, scores }),
+      });
+      if (r.status === 401) { setSessionExpired(true); return false; }
+      if (!r.ok) return false;
+      setRadarScores(prev => ({ ...prev, [String(sessionId)]: scores }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const runCompleteSession = async (sessionId, answers, conversations, currentData) => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -643,8 +687,15 @@ export default function SelfAnalysisApp() {
         if (currentData.sessions[String(i)]?.summary) previousSummaries.push({ sessionNumber: i, title: SESSIONS[i - 1].title, summary: currentData.sessions[String(i)].summary });
       }
       callAPI({ type: 'onelineinsight', allAnswers }, tokenRef.current).then(text => { if (text) setOnelineText(text); }).catch(() => {});
-      const summary = await callAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries }, tokenRef.current);
+      const { text: summary, scores } = await callSummaryAPI({ type: 'summary', sessionNumber: sessionId, userName: currentData.userName, allAnswers, previousSummaries }, tokenRef.current);
       setSummaryText(summary);
+
+      // スコアは radar_scores 列へ。session_data には入れない
+      // （/api/db/save の blob 丸ごと上書きで消えるため）
+      //
+      // ★保存が確定してから初めて画面に出す。DBに無いものは見せない。
+      //   握り潰すと「画面には五角形が出ているのにDBには無い」嘘の状態を作る。
+      if (scores) await persistScores(sessionId, scores);
       saveData(prev => ({
         ...prev,
         activeSessionId: null,
@@ -1036,7 +1087,7 @@ export default function SelfAnalysisApp() {
                   ? <div style={{ padding: '20px 0' }}>
                       <p style={{ color: '#e05555', fontSize: '13px', marginBottom: '8px' }}>生成に失敗しました</p>
                       <p style={{ color: C.dim, fontSize: '12px', marginBottom: '16px' }}>{summaryError}</p>
-                      <button onClick={() => runCompleteSession(activeId, data.sessions[String(activeId)].answers, data)} style={goldBtn(true)}>もう一度試す</button>
+                      <button onClick={() => runCompleteSession(activeId, data.sessions[String(activeId)].answers, data.sessions[String(activeId)].conversations || {}, data)} style={goldBtn(true)}>もう一度試す</button>
                     </div>
                   : cardContent
                   ? <div>{renderMd(cardContent)}</div>
@@ -1046,6 +1097,23 @@ export default function SelfAnalysisApp() {
                       <p style={{ color: C.muted, fontSize: '13px' }}>セッションをお待ちください。</p>
                     </div>}
             </div>
+
+            {/* 五角形レーダー（本人向け＝数値なし・形だけ）。スコアが無いセッションでは何も出ない */}
+            {!isSummarizing && !summaryError && radarScores[String(tabs[summaryTab]?.sessionId)] && (
+              <div style={{ padding: '28px 0 8px', borderTop: `1px solid ${C.border}`, marginBottom: '32px' }}>
+                <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', textAlign: 'center', marginBottom: '18px' }}>
+                  言葉が出た領域
+                </p>
+                <RadarPentagon
+                  layers={[{
+                    label: `SESSION ${tabs[summaryTab].sessionId}`,
+                    scores: radarScores[String(tabs[summaryTab].sessionId)],
+                    color: C.gold,
+                  }]}
+                />
+              </div>
+            )}
+
             {!isSummarizing && !summaryError && (
               <div style={{ display: 'flex', gap: '10px', marginBottom: '32px', flexWrap: 'wrap' }}>
                 {activeId < 3 && !data.sessions[String(activeId)]?.workSubmitted
@@ -1138,6 +1206,11 @@ export default function SelfAnalysisApp() {
 
   if (view === 'final-document') {
     const doc = data?.integratedDoc || '';
+    // スコアがあるセッションだけを重ねる（1つしか無ければ1層。歪んだ形は描かない）
+    const LAYER_COLORS = { 1: C.gold, 2: '#6b9b6b', 3: '#7a8fc4' };
+    const integratedLayers = [1, 2, 3]
+      .filter(i => radarScores[String(i)])
+      .map(i => ({ label: `SESSION ${i}`, scores: radarScores[String(i)], color: LAYER_COLORS[i] }));
     return (
       <>
         <Head><title>分身ドキュメント — {data?.userName}</title></Head>
@@ -1154,6 +1227,15 @@ export default function SelfAnalysisApp() {
               </div>
             ) : (
               <>
+                {/* 統合レーダー：3セッションを色違いで重ね描き（本人向け＝数値なし） */}
+                {integratedLayers.length > 0 && (
+                  <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '32px 24px', marginBottom: '24px' }}>
+                    <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.25em', textAlign: 'center', marginBottom: '20px' }}>
+                      3回で出てきた言葉の輪郭
+                    </p>
+                    <RadarPentagon layers={integratedLayers} size={340} />
+                  </div>
+                )}
                 <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '40px 44px', marginBottom: '24px' }}>
                   {renderMd(doc)}
                 </div>
