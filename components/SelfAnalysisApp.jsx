@@ -650,6 +650,25 @@ export default function SelfAnalysisApp() {
     }
   };
 
+  // スコアを保存し、成功した場合だけ画面に出す。
+  // 保存に失敗したら五角形は出さない（DBに無いものを見せない）。
+  // カード本文は影響を受けない（本体機能をレーダーのために落とさない）。
+  const persistScores = async (sessionId, scores) => {
+    try {
+      const r = await fetch('/api/db/scores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
+        body: JSON.stringify({ sessionId, scores }),
+      });
+      if (r.status === 401) { setSessionExpired(true); return false; }
+      if (!r.ok) return false;
+      setRadarScores(prev => ({ ...prev, [String(sessionId)]: scores }));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const runCompleteSession = async (sessionId, answers, conversations, currentData) => {
     saveData(prev => ({ ...prev, activeSessionId: null }));
     try { localStorage.removeItem(DRAFT_KEY); } catch {}
@@ -673,14 +692,10 @@ export default function SelfAnalysisApp() {
 
       // スコアは radar_scores 列へ。session_data には入れない
       // （/api/db/save の blob 丸ごと上書きで消えるため）
-      if (scores) {
-        setRadarScores(prev => ({ ...prev, [String(sessionId)]: scores }));
-        fetch('/api/db/scores', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenRef.current}` },
-          body: JSON.stringify({ sessionId, scores }),
-        }).catch(() => {});
-      }
+      //
+      // ★保存が確定してから初めて画面に出す。DBに無いものは見せない。
+      //   握り潰すと「画面には五角形が出ているのにDBには無い」嘘の状態を作る。
+      if (scores) await persistScores(sessionId, scores);
       saveData(prev => ({
         ...prev,
         activeSessionId: null,

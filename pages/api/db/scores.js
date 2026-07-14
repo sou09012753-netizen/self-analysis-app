@@ -19,8 +19,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid sessionId' });
     }
 
-    const normalized = normalizeScores(scores);
-    if (!normalized) return res.status(400).json({ error: 'Invalid scores' });
+    // 5軸すべてが揃っているかだけを検証する。保存するのは受け取った形のまま
+    // （reason 付きの形も保持する。reason はコーチ画面にだけ出す）
+    if (!normalizeScores(scores)) return res.status(400).json({ error: 'Invalid scores' });
 
     const { data: row, error: readError } = await supabase
       .from('coaching_users')
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
     if (readError) return res.status(500).json({ error: readError.message });
 
     // 該当セッションのキーだけを差し替える。他セッションのスコアは保持する。
-    const merged = { ...(row?.radar_scores || {}), [String(sessionId)]: normalized };
+    const merged = { ...(row?.radar_scores || {}), [String(sessionId)]: scores };
 
     const { error } = await supabase
       .from('coaching_users')

@@ -35,10 +35,10 @@ export default async function handler(req, res) {
 
   // スコアは radar_scores 列に書く。session_data には入れない
   // （クライアントの blob 丸ごと上書きに巻き込まれて消えるため）
-  const normalized = normalizeScores(scores);
+  // 5軸が揃っているかだけ検証し、保存は受け取った形のまま（reason 付きも保持する）
   const payload = { session_data: sessionData, updated_at: new Date().toISOString() };
-  if (normalized) {
-    payload.radar_scores = { ...(data.radar_scores || {}), [String(sessionId)]: normalized };
+  if (normalizeScores(scores)) {
+    payload.radar_scores = { ...(data.radar_scores || {}), [String(sessionId)]: scores };
   }
 
   const { error: updateError } = await supabase

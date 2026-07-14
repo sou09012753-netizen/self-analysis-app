@@ -398,11 +398,23 @@ ${actionSection3}`;
 2：一般論・短い・回避気味
 1：その領域について、まだほとんど言葉が出ていない（未踏）
 
+■ 各軸には reason（その値になった根拠）を必ず添える。reason はコーチだけが読む。
+
+reason のルール（厳守）：
+- 書いてよいのは「観察」だけ。本人が何をどう書いたか、何に触れ、何に触れなかったか
+- 可能な限り、本人が実際に使った言葉をそのまま引用して根拠を示す
+- ★本人の性格・能力・課題を述べてはならない
+- ★「〜が弱い」「〜が低い」「〜ができていない」「〜が苦手」は絶対に書かない
+- 1〜2文で簡潔に
+
+reason の良い例：「『誰にも評価されなくても続ける』と明言し、その理由まで自分の言葉で書いている。ただし具体的な場面には触れていない」
+reason の悪い例：「自己肯定感が低く、他人の評価に依存している」（← 性格の断定。禁止）
+
 <<<SCORES>>>
-{"生き方":N,"環境":N,"承認と動機":N,"行動":N,"自己コントロール":N}`;
+{"生き方":{"score":N,"reason":"..."},"環境":{"score":N,"reason":"..."},"承認と動機":{"score":N,"reason":"..."},"行動":{"score":N,"reason":"..."},"自己コントロール":{"score":N,"reason":"..."}}`;
 
       const messages = [{ role: 'user', content: JSON.stringify(allAnswers) }];
-      const raw = await callClaude(system, messages, 2200);
+      const raw = await callClaude(system, messages, 2800);
 
       const [bodyRaw, scoreRaw = ''] = raw.split('<<<SCORES>>>');
       let scores = null;
@@ -411,11 +423,12 @@ ${actionSection3}`;
         if (m) scores = JSON.parse(m[0].replace(/[\n\r\t]/g, ' '));
       } catch {}
 
-      // 本文にスコアJSONが混入した場合に備えて除去する（本人画面に数値を出さないため）
-      const text = bodyRaw
-        .replace(/\{[^{}]*"生き方"[\s\S]*?\}/g, '')
-        .replace(/<<<SCORES>>>/g, '')
-        .trim();
+      // 本文にスコアJSON（数値・根拠）が混入した場合に備えて除去する。
+      // ネストした {"score":N,"reason":"..."} を含むため、最初の「{"生き方"」以降を丸ごと落とす。
+      let text = bodyRaw;
+      const leak = text.indexOf('{"生き方"');
+      if (leak !== -1) text = text.slice(0, leak);
+      text = text.replace(/<<<SCORES>>>/g, '').trim();
 
       // scores が null でもカード本文は必ず返す（レーダーのために本体を落とさない）
       return res.json({ text, scores });

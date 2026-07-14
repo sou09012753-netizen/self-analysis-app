@@ -401,15 +401,17 @@ export default function CoachPage() {
       const json = await r.json();
       const summary = json.text || '';
       if (!summary) return;
-      const scores = normalizeScores(json.scores);
+      // 生のまま送る（reason を落とさない）。5軸が揃っているかだけ検証する
+      const scores = normalizeScores(json.scores) ? json.scores : null;
 
-      await fetch('/api/admin/save-card', {
+      const saveRes = await fetch('/api/admin/save-card', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
         body: JSON.stringify({ userId: selectedClient.id, sessionId, summary, scores }),
       });
 
-      if (scores) setClientScores(prev => ({ ...prev, [String(sessionId)]: scores }));
+      // 保存が成功した場合だけ画面に出す（DBに無いものを見せない）
+      if (scores && saveRes.ok) setClientScores(prev => ({ ...prev, [String(sessionId)]: scores }));
 
       setClientData(prev => {
         if (!prev) return prev;
