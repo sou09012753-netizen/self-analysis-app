@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { answerWithFollowups } from '../lib/followups';
+import { normalizeScores } from '../lib/radar';
+import RadarPentagon from '../components/RadarPentagon';
+import RadarScoreList from '../components/RadarScoreList';
 
 const C = {
   bg: '#050505', text: '#f0ebe0', muted: '#888', dim: '#444',
@@ -108,6 +111,8 @@ export default function CoachPage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientData, setClientData] = useState(null);
   const [clientWorkResponses, setClientWorkResponses] = useState([]);
+  // 五角形レーダー用スコア（radar_scores 列。session_data とは別管理）
+  const [clientScores, setClientScores] = useState({});
 
   // クライアント追加
   const [showCreateClient, setShowCreateClient] = useState(false);
@@ -184,6 +189,7 @@ export default function CoachPage() {
       const json = await r.json();
       if (!json.client) return;
       setClientData(json.client.session_data);
+      setClientScores(json.client.radar_scores || {});
       setClientWorkResponses(json.client.work_responses || []);
     } catch {}
   };
@@ -299,6 +305,7 @@ export default function CoachPage() {
         const sessionData = json.client.session_data;
         const workResponses = json.client.work_responses || [];
         setClientData(sessionData);
+        setClientScores(json.client.radar_scores || {});
         setClientWorkResponses(workResponses);
         await Promise.all([
           loadOrGenerateReport(client.id, client.user_name, sessionData, workResponses),
@@ -394,12 +401,15 @@ export default function CoachPage() {
       const json = await r.json();
       const summary = json.text || '';
       if (!summary) return;
+      const scores = normalizeScores(json.scores);
 
       await fetch('/api/admin/save-card', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
-        body: JSON.stringify({ userId: selectedClient.id, sessionId, summary }),
+        body: JSON.stringify({ userId: selectedClient.id, sessionId, summary, scores }),
       });
+
+      if (scores) setClientScores(prev => ({ ...prev, [String(sessionId)]: scores }));
 
       setClientData(prev => {
         if (!prev) return prev;
@@ -635,6 +645,10 @@ ${body}
 
   if (phase === 'session') {
     const latest = clientData ? getLatestAnswerEntry(clientData) : null;
+    const RADAR_COLORS = { 1: C.gold, 2: C.green, 3: '#7a8fc4' };
+    const radarLayers = [1, 2, 3]
+      .filter(i => clientScores[String(i)])
+      .map(i => ({ label: `SESSION ${i}`, scores: clientScores[String(i)], color: RADAR_COLORS[i] }));
     const hasCompletedSession = clientData && Object.values(clientData.sessions || {}).some(s => s.status === 'completed');
 
     return (
@@ -757,6 +771,31 @@ ${body}
                 </div>
               )}
             </div>
+
+            {/* 五角形レーダー（コーチ向け＝数値あり）。スコアが無ければ何も出ない */}
+            {radarLayers.length > 0 && (
+              <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
+                <div style={{ background: C.surface, padding: '14px 20px' }}>
+                  <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>自己開示の深さ — 五角形</p>
+                </div>
+                <div style={{ padding: '24px', background: '#080808' }}>
+                  {/* 統合（全セッション重ね描き） */}
+                  <div style={{ display: 'flex', gap: '28px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <RadarPentagon layers={radarLayers} size={300} />
+                  </div>
+
+                  {/* セッション単体 ＋ 数値（RadarScoreList はコーチ画面専用） */}
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '28px', paddingTop: '24px', borderTop: `1px solid ${C.border}` }}>
+                    {radarLayers.map(l => (
+                      <div key={l.label} style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <RadarPentagon layers={[l]} size={180} caption={false} />
+                        <RadarScoreList scores={l.scores} title={l.label} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* セッションで使える問い 3つ */}
             {hasCompletedSession && (

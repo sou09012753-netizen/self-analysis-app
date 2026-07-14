@@ -13,14 +13,14 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabase
       .from('coaching_users')
-      .select('session_data')
+      .select('session_data, radar_scores')
       .eq('id', user.id)
       .single();
 
     if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
     const sd = data?.session_data;
     const isEmpty = !sd || Object.keys(sd).length === 0;
-    return res.json({ sessionData: isEmpty ? null : sd });
+    return res.json({ sessionData: isEmpty ? null : sd, radarScores: data?.radar_scores || {} });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

@@ -373,9 +373,52 @@ ${actionSection2}`;
 ${actionSection3}`;
       }
 
+      // 五角形レーダー用スコア。全セッション共通で本文の後ろに付ける。
+      system += `
+
+---
+
+【最後に必ず出力する — 五角形レーダー用スコア】
+
+本文をすべて書き終えた後、区切り線 <<<SCORES>>> を1行置き、その後にJSONだけを出力する。
+
+5つの領域それぞれについて、「今回の回答の中で、本人がその領域について
+どれだけ自分の言葉を出せたか（自己開示の深さ）」を1〜5で採点する。
+
+★これは能力・性格・優劣の点数では断じてない。
+★本人が「できている / できていない」を評価してはならない。
+★見るのは、言葉が出た量と深さだけ。
+★その領域の話がほとんど出てこなかった場合は 1 とする。
+　1は「欠如」ではなく「未踏（まだ言葉が出ていない）」を意味する。
+★0は絶対に使わない。
+
+5：感情が噴き出している／具体的な場面と本音の両方が出ている
+4：本音は出ているが、整理された言葉でまとめられている
+3：やや表面的だが、自分の言葉で語っている
+2：一般論・短い・回避気味
+1：その領域について、まだほとんど言葉が出ていない（未踏）
+
+<<<SCORES>>>
+{"生き方":N,"環境":N,"承認と動機":N,"行動":N,"自己コントロール":N}`;
+
       const messages = [{ role: 'user', content: JSON.stringify(allAnswers) }];
-      const text = await callClaude(system, messages, 1800);
-      return res.json({ text });
+      const raw = await callClaude(system, messages, 2200);
+
+      const [bodyRaw, scoreRaw = ''] = raw.split('<<<SCORES>>>');
+      let scores = null;
+      try {
+        const m = scoreRaw.match(/\{[\s\S]*\}/);
+        if (m) scores = JSON.parse(m[0].replace(/[\n\r\t]/g, ' '));
+      } catch {}
+
+      // 本文にスコアJSONが混入した場合に備えて除去する（本人画面に数値を出さないため）
+      const text = bodyRaw
+        .replace(/\{[^{}]*"生き方"[\s\S]*?\}/g, '')
+        .replace(/<<<SCORES>>>/g, '')
+        .trim();
+
+      // scores が null でもカード本文は必ず返す（レーダーのために本体を落とさない）
+      return res.json({ text, scores });
     }
 
     if (type === 'coachscript') {
