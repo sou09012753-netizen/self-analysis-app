@@ -34,10 +34,10 @@ export const SESSIONS = [
       {
         title: 'モヤモヤの輪郭を取る',
         questions: [
-          '今、頭の中にあるモヤモヤや引っかかりを、言葉にならなくていいので思いつくまま全部書いてください。正解はありません。',
+          '今のあなたに一番近いのは、どれですか。① モヤモヤしている ② 焦っている ③ 停滞している ④ これでいいのか分からない。ひとつ選んで、そう感じた「直近の場面」を一つだけ書いてください。正解はありません。',
           'そのモヤモヤは、「自分自身への疑い」から来ていますか。それとも「周りや環境への不満・比較」から来ていますか。どちらが強いか、直感で答えてください。',
           'そのモヤモヤが完全に消えたとして、あなたは「何ができるようになる」と思いますか。それとも「何者かになれる」と思いますか。',
-          'Q1で出てきたモヤモヤの中で、一番「考えたくない」「直視したくない」と感じるものはどれですか。それはなぜだと思いますか。',
+          'ここまでで触れたことの中で、一番「考えたくない」「直視したくない」と感じるのはどれですか。それはなぜだと思いますか。',
         ],
       },
       {
@@ -555,6 +555,7 @@ export default function SelfAnalysisApp() {
           conversationHistory: prevThread,
           depth: followupDepth,
           previousContext,
+          maxDepth: activeId === 1 ? 1 : 3,
         }, tokenRef.current);
         if (fu && fu !== '十分です') {
           const nextThread = [...thread, { role: 'assistant', content: fu }];
@@ -612,6 +613,7 @@ export default function SelfAnalysisApp() {
                 conversationHistory: [],
                 depth: 0,
                 previousContext,
+                maxDepth: activeId === 1 ? 1 : 3,
               },
           tokenRef.current
         );
