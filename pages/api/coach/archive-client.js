@@ -1,8 +1,9 @@
 import { getSupabase } from '../../../lib/supabase';
 import { validateCoachPasscode } from '../../../lib/coachAuth';
+import { MAX_CLIENTS_PER_COACH } from '../../../lib/limits';
 
 // クライアントの論理削除（アーカイブ）。物理削除はしない。
-// restore: true で復元（今回UIは用意しない。API直叩き用）
+// restore: true で復元（コーチ画面の「アーカイブ済み」セクションから呼ぶ）
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
@@ -14,6 +15,21 @@ export default async function handler(req, res) {
   if (!userId) return res.status(400).json({ error: 'userId は必須です' });
 
   const supabase = getSupabase();
+
+  // 復元は枠を1つ消費する。create-client と同じ上限で弾く。
+  if (restore) {
+    const { count, error: countError } = await supabase
+      .from('coaching_users')
+      .select('id', { count: 'exact', head: true })
+      .eq('coach_id', coach.id)
+      .is('archived_at', null);
+    if (countError) return res.status(500).json({ error: countError.message });
+    if (count >= MAX_CLIENTS_PER_COACH) {
+      return res.status(409).json({
+        error: `クライアント登録は${MAX_CLIENTS_PER_COACH}人までです。他のクライアントをアーカイブしてから戻してください。`,
+      });
+    }
+  }
 
   // 所有者検証は update の where に入れる。
   // 事前 select → update だと間に coach_id が変わりうるため、条件を書き込み文に持たせる。

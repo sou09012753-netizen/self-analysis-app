@@ -13,14 +13,15 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabase
       .from('coaching_users')
-      .select('session_data, radar_scores')
+      .select('session_data, radar_scores, coach_gates')
       .eq('id', user.id)
       .single();
 
     if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
     const sd = data?.session_data;
     const isEmpty = !sd || Object.keys(sd).length === 0;
-    return res.json({ sessionData: isEmpty ? null : sd, radarScores: data?.radar_scores || {} });
+    // coachGates はコーチだけが書く解放ゲート。本人は読むだけ（保存経路には絶対に載せない）。
+    return res.json({ sessionData: isEmpty ? null : sd, radarScores: data?.radar_scores || {}, coachGates: data?.coach_gates || {} });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

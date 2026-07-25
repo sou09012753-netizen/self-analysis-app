@@ -23,11 +23,23 @@ export default async function handler(req, res) {
     return res.json({ clients: data || [], coachName: coach.name, maxClients: MAX_CLIENTS_PER_COACH });
   }
 
+  // アーカイブ済みのみ。復元UIから呼ぶ。
+  if (action === 'archived') {
+    const { data, error } = await supabase
+      .from('coaching_users')
+      .select('id, user_name, archived_at')
+      .eq('coach_id', coach.id)
+      .not('archived_at', 'is', null)
+      .order('archived_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ clients: data || [] });
+  }
+
   if (action === 'answers') {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
     const [{ data, error }, { data: works }] = await Promise.all([
-      supabase.from('coaching_users').select('user_name, session_data, radar_scores').eq('id', userId).eq('coach_id', coach.id).single(),
+      supabase.from('coaching_users').select('user_name, session_data, radar_scores, coach_gates').eq('id', userId).eq('coach_id', coach.id).single(),
       supabase.from('work_responses').select('session_no, work_text, response_text').eq('user_id', userId).order('session_no'),
     ]);
     if (error) return res.status(500).json({ error: error.message });

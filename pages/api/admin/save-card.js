@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
   const { data, error } = await supabase
     .from('coaching_users')
-    .select('session_data, radar_scores')
+    .select('session_data, radar_scores, coach_gates')
     .eq('id', userId)
     .eq('coach_id', coach.id)
     .single();
@@ -30,13 +30,18 @@ export default async function handler(req, res) {
     status: 'completed',
     summary,
     completedAt: new Date().toISOString(),
-    unlocked: true,
   };
+
+  // カードを生成した＝本人に見せてよい、ということ。表示ゲートも一緒に開ける。
+  // ゲートは coach_gates 列に書く（session_data の blob 上書きから隔離するため）。
+  const sid = String(sessionId);
+  const gates = data.coach_gates || {};
+  const nextGates = { ...gates, [sid]: { ...(gates[sid] || {}), cardReleased: true } };
 
   // スコアは radar_scores 列に書く。session_data には入れない
   // （クライアントの blob 丸ごと上書きに巻き込まれて消えるため）
   // 5軸が揃っているかだけ検証し、保存は受け取った形のまま（reason 付きも保持する）
-  const payload = { session_data: sessionData, updated_at: new Date().toISOString() };
+  const payload = { session_data: sessionData, coach_gates: nextGates, updated_at: new Date().toISOString() };
   if (normalizeScores(scores)) {
     payload.radar_scores = { ...(data.radar_scores || {}), [String(sessionId)]: scores };
   }
