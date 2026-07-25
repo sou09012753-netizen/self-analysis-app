@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { answerWithFollowups } from '../lib/followups';
 import { normalizeScores, extractReasons } from '../lib/radar';
+import { isSessionOpen, isCardReleased } from '../lib/gates';
 import RadarPentagon from '../components/RadarPentagon';
 import RadarScoreList from '../components/RadarScoreList';
 
@@ -130,6 +131,11 @@ export default function CoachPage() {
   const [archivingId, setArchivingId] = useState(null);
   const [archiveError, setArchiveError] = useState('');
 
+  // アーカイブ済み一覧（復元用）。開いたときだけ取りに行く。
+  const [archivedClients, setArchivedClients] = useState([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+
   // Report states
   const [reportText, setReportText] = useState(null);
   const [reportOpen, setReportOpen] = useState(true);
@@ -144,8 +150,12 @@ export default function CoachPage() {
   const [allAnswersOpen, setAllAnswersOpen] = useState({1: true, 2: true, 3: true});
 
   // Session unlock states
-  const [unlockingSession, setUnlockingSession] = useState(null);
   const [generatingCard, setGeneratingCard] = useState(null);
+
+  // コーチの解放ゲート（coach_gates 列。session_data とは別管理）
+  // { "1": {sessionOpen, cardReleased}, ... }。本人には書かせない。
+  const [clientGates, setClientGates] = useState({});
+  const [settingGate, setSettingGate] = useState(null); // `${sessionId}:${gate}` 実行中
 
   const passcodeRef = useRef('');
   const channelRef = useRef(null);
@@ -157,6 +167,13 @@ export default function CoachPage() {
     const json = await r.json();
     setClients(json.clients || []);
     setMaxClients(json.maxClients ?? null);
+  };
+
+  const loadArchivedClients = async (pc) => {
+    const r = await fetch('/api/admin/coach-data?action=archived', { headers: { 'x-coach-passcode': pc } });
+    if (!r.ok) throw new Error('アーカイブ済みの取得に失敗しました');
+    const json = await r.json();
+    setArchivedClients(json.clients || []);
   };
 
   const setupRealtime = async () => {
@@ -192,6 +209,7 @@ export default function CoachPage() {
       if (!json.client) return;
       setClientData(json.client.session_data);
       setClientScores(json.client.radar_scores || {});
+      setClientGates(json.client.coach_gates || {});
       setClientWorkResponses(json.client.work_responses || []);
     } catch {}
   };
@@ -290,6 +308,7 @@ export default function CoachPage() {
     setSelectedClient(client);
     selectedClientRef.current = client;
     setClientData(null);
+    setClientGates({});
     setClientWorkResponses([]);
     setReportText(null);
     setReportUpdatedAt(null);
@@ -308,6 +327,7 @@ export default function CoachPage() {
         const workResponses = json.client.work_responses || [];
         setClientData(sessionData);
         setClientScores(json.client.radar_scores || {});
+        setClientGates(json.client.coach_gates || {});
         setClientWorkResponses(workResponses);
         await Promise.all([
           loadOrGenerateReport(client.id, client.user_name, sessionData, workResponses),
@@ -370,10 +390,46 @@ export default function CoachPage() {
       const json = await r.json();
       if (!r.ok) throw new Error(json.error || 'アーカイブに失敗しました');
       await loadClients(passcodeRef.current);
+      if (showArchived) await loadArchivedClients(passcodeRef.current);
     } catch (err) {
       setArchiveError(err.message);
     }
     setArchivingId(null);
+  };
+
+  const handleRestoreClient = async (c) => {
+    if (archivingId) return;
+    setArchivingId(c.id);
+    setArchiveError('');
+    try {
+      const r = await fetch('/api/coach/archive-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
+        body: JSON.stringify({ userId: c.id, restore: true }),
+      });
+      const json = await r.json();
+      if (!r.ok) throw new Error(json.error || '復元に失敗しました');
+      await Promise.all([
+        loadClients(passcodeRef.current),
+        loadArchivedClients(passcodeRef.current),
+      ]);
+    } catch (err) {
+      setArchiveError(err.message);
+    }
+    setArchivingId(null);
+  };
+
+  const handleToggleArchived = async () => {
+    if (showArchived) { setShowArchived(false); return; }
+    setShowArchived(true);
+    setIsLoadingArchived(true);
+    setArchiveError('');
+    try {
+      await loadArchivedClients(passcodeRef.current);
+    } catch (err) {
+      setArchiveError(err.message);
+    }
+    setIsLoadingArchived(false);
   };
 
   const handleGenerateCard = async (sessionId) => {
@@ -435,38 +491,36 @@ export default function CoachPage() {
               status: 'completed',
               summary,
               completedAt: new Date().toISOString(),
-              unlocked: true,
             },
           },
         };
       });
+      // カード生成＝表示許可。ゲート側も開いた状態に反映（save-card が cardReleased=true を書く）
+      if (saveRes.ok) {
+        const sid = String(sessionId);
+        setClientGates(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), cardReleased: true } }));
+      }
     } catch {}
     setGeneratingCard(null);
   };
 
-  const handleUnlockSession = async (sessionId) => {
+  // 解放ゲートを立て/降ろしする。coach_gates 列にだけ書く（本人の blob と競合しない）。
+  const handleSetGate = async (sessionId, gate, value) => {
     if (!selectedClient) return;
-    setUnlockingSession(sessionId);
+    const key = `${sessionId}:${gate}`;
+    setSettingGate(key);
     try {
-      const r = await fetch('/api/admin/unlock-session', {
+      const r = await fetch('/api/admin/set-gate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-coach-passcode': passcodeRef.current },
-        body: JSON.stringify({ userId: selectedClient.id, sessionId }),
+        body: JSON.stringify({ userId: selectedClient.id, sessionId, gate, value }),
       });
       if (r.ok) {
-        setClientData(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            sessions: {
-              ...prev.sessions,
-              [sessionId]: { ...(prev.sessions?.[sessionId] || {}), unlocked: true },
-            },
-          };
-        });
+        const json = await r.json();
+        setClientGates(json.coach_gates || {});
       }
     } catch {}
-    setUnlockingSession(null);
+    setSettingGate(null);
   };
 
   const handleDownloadPDF = () => {
@@ -650,6 +704,54 @@ ${body}
               ))}
             </div>
           )}
+
+          {/* アーカイブ済み（復元） */}
+          <div style={{ marginTop: '28px', paddingTop: '20px', borderTop: `1px solid ${C.border}` }}>
+            <button
+              onClick={handleToggleArchived}
+              style={{
+                padding: 0, background: 'transparent', border: 'none',
+                color: C.dim, fontSize: '11px', fontFamily: C.font, cursor: 'pointer',
+              }}
+            >
+              {showArchived ? '▾' : '▸'} アーカイブ済み
+            </button>
+
+            {showArchived && (
+              <div style={{ marginTop: '14px' }}>
+                {isLoadingArchived ? (
+                  <p style={{ color: C.dim, fontSize: '12px' }}>読み込み中...</p>
+                ) : archivedClients.length === 0 ? (
+                  <p style={{ color: C.dim, fontSize: '12px' }}>アーカイブ済みのクライアントはいません</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {archivedClients.map(c => (
+                      <div key={c.id} style={{ padding: '14px 18px', border: `1px solid ${C.border}`, borderRadius: '6px', background: 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: C.dim, fontSize: '14px' }}>{c.user_name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <span style={{ color: C.dim, fontSize: '11px' }}>{c.archived_at ? new Date(c.archived_at).toLocaleDateString('ja-JP') : ''}</span>
+                          <button
+                            onClick={() => handleRestoreClient(c)}
+                            disabled={archivingId === c.id || isFull}
+                            title={isFull ? `上限${maxClients}人です。他をアーカイブしてから戻してください。` : ''}
+                            style={{
+                              padding: '5px 10px', borderRadius: '4px', background: 'transparent',
+                              border: `1px solid ${isFull ? C.border : C.gold + '66'}`,
+                              color: isFull ? C.dim : C.gold, fontSize: '10px', fontFamily: C.font,
+                              cursor: (archivingId === c.id || isFull) ? 'not-allowed' : 'pointer',
+                              opacity: isFull ? 0.5 : 1,
+                            }}
+                          >
+                            {archivingId === c.id ? '処理中...' : '戻す'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -693,6 +795,9 @@ ${body}
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', marginBottom: '24px', overflow: 'hidden' }}>
                 <div style={{ background: C.surface, padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
                   <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>セッション解放管理</p>
+                  <p style={{ color: C.dim, fontSize: '10px', margin: '6px 0 0', lineHeight: '1.7' }}>
+                    「開く」を押すまで本人はそのセッションに入れません。「シートを表示」を押すまで自己分析シートは本人画面に出ません。もう一度押すと戻せます。
+                  </p>
                 </div>
                 <div style={{ padding: '16px 20px', display: 'flex', gap: '12px' }}>
                   {[1, 2, 3].map(id => {
@@ -702,46 +807,61 @@ ${body}
                     if (cfg) cfg.phases.forEach(p => totalQ += p.questions.length);
                     const answeredQ = Object.keys(sess.answers || {}).length;
                     const allAnswered = totalQ > 0 && answeredQ >= totalQ;
-                    const unlocked = sess.unlocked || false;
                     const completed = sess.status === 'completed';
-                    const isUnlocking = unlockingSession === id;
+                    const open = isSessionOpen(clientGates, id);
+                    const released = isCardReleased(clientGates, id);
+                    const busyOpen = settingGate === `${id}:sessionOpen`;
+                    const busyRel = settingGate === `${id}:cardReleased`;
+                    const active = open || released || completed;
+
+                    const gateBtn = (on, busy, onLabel, offLabel, onClick, extra = {}) => (
+                      <button
+                        onClick={onClick}
+                        disabled={busy}
+                        style={{
+                          padding: '6px 0', borderRadius: '4px', width: '100%',
+                          fontSize: '10px', fontFamily: C.font,
+                          cursor: busy ? 'not-allowed' : 'pointer',
+                          border: `1px solid ${on ? C.gold + '66' : C.border2}`,
+                          background: on ? C.gold + '18' : 'transparent',
+                          color: on ? C.gold : C.dim, ...extra,
+                        }}
+                      >{busy ? '...' : on ? onLabel : offLabel}</button>
+                    );
+
                     return (
-                      <div key={id} style={{ flex: 1, padding: '14px', background: '#0a0a0a', borderRadius: '6px', border: `1px solid ${(unlocked || completed) ? C.gold + '44' : C.border}` }}>
-                        <p style={{ color: (unlocked || completed) ? C.gold : C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>SESSION {id}</p>
+                      <div key={id} style={{ flex: 1, padding: '14px', background: '#0a0a0a', borderRadius: '6px', border: `1px solid ${active ? C.gold + '44' : C.border}` }}>
+                        <p style={{ color: active ? C.gold : C.dim, fontSize: '10px', letterSpacing: '0.2em', marginBottom: '8px' }}>SESSION {id}</p>
                         <p style={{ color: C.dim, fontSize: '11px', marginBottom: '12px' }}>
                           {completed ? '完了' : allAnswered ? '全問記入済み' : answeredQ > 0 ? `${answeredQ}/${totalQ}問` : '未開始'}
                         </p>
-                        {completed ? (
-                          <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.08em' }}>完了</p>
-                        ) : allAnswered ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <button
-                              onClick={() => generatingCard === null && handleGenerateCard(id)}
-                              style={{
-                                padding: '7px 0', border: 'none', borderRadius: '4px',
-                                cursor: generatingCard !== null ? 'not-allowed' : 'pointer',
-                                fontSize: '11px', fontFamily: C.font, width: '100%',
-                                background: generatingCard === id ? '#1a1a1a' : C.gold,
-                                color: generatingCard === id ? C.dim : '#0a0a0a',
-                                opacity: generatingCard !== null && generatingCard !== id ? 0.4 : 1,
-                              }}
-                            >{generatingCard === id ? '生成中...' : 'カードを生成する'}</button>
-                            {!unlocked && (
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {/* ① セッションを開く（本人が回答できるか）。S1 は常に開く */}
+                          {id === 1
+                            ? <p style={{ color: C.dim, fontSize: '10px', textAlign: 'center', padding: '6px 0' }}>常に開放</p>
+                            : gateBtn(open, busyOpen, '● 開放中（閉じる）', 'このセッションを開く',
+                                () => !busyOpen && handleSetGate(id, 'sessionOpen', !open))}
+
+                          {/* ② 自己分析シートの表示（本人画面に出すか） */}
+                          {(allAnswered || completed) && (
+                            <>
+                              {gateBtn(released, busyRel, '● シート表示中（隠す）', 'シートを表示する',
+                                () => !busyRel && handleSetGate(id, 'cardReleased', !released))}
                               <button
-                                onClick={() => !isUnlocking && handleUnlockSession(id)}
+                                onClick={() => generatingCard === null && handleGenerateCard(id)}
                                 style={{
-                                  padding: '5px 0', border: `1px solid ${C.border2}`, borderRadius: '4px',
-                                  cursor: isUnlocking ? 'not-allowed' : 'pointer',
+                                  padding: '6px 0', border: 'none', borderRadius: '4px',
+                                  cursor: generatingCard !== null ? 'not-allowed' : 'pointer',
                                   fontSize: '10px', fontFamily: C.font, width: '100%',
-                                  background: 'transparent', color: C.dim,
+                                  background: generatingCard === id ? '#1a1a1a' : C.gold,
+                                  color: generatingCard === id ? C.dim : '#0a0a0a',
+                                  opacity: generatingCard !== null && generatingCard !== id ? 0.4 : 1,
                                 }}
-                              >{isUnlocking ? '...' : '解放のみ'}</button>
-                            )}
-                            {unlocked && <p style={{ color: C.dim, fontSize: '10px', textAlign: 'center' }}>解放済み</p>}
-                          </div>
-                        ) : (
-                          <p style={{ color: '#2a2a2a', fontSize: '10px' }}>記入待ち</p>
-                        )}
+                              >{generatingCard === id ? '生成中...' : completed ? 'カードを再生成' : 'カードを生成して表示'}</button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { answerWithFollowups, getPendingFollowup } from '../lib/followups';
 import { normalizeScores } from '../lib/radar';
+import { isSessionOpen, isCardReleased } from '../lib/gates';
 // ★RadarScoreList（数値表示）は絶対に import しない。本人には数値を見せない。
 import RadarPentagon from './RadarPentagon';
 
@@ -272,6 +273,9 @@ export default function SelfAnalysisApp() {
   // 五角形レーダー用。{ "1": {...}, "2": {...}, "3": {...} }
   // session_data とは別列（radar_scores）で管理される
   const [radarScores, setRadarScores] = useState({});
+  // コーチの解放ゲート（coach_gates 列）。本人は読むだけ。保存経路には絶対に載せない。
+  // { "1": {sessionOpen, cardReleased}, ... }
+  const [coachGates, setCoachGates] = useState({});
   const [workContent, setWorkContent]   = useState(null);
   const [workAnswer, setWorkAnswer]     = useState('');
   const [isGeneratingWork, setIsGeneratingWork] = useState(false);
@@ -352,8 +356,9 @@ export default function SelfAnalysisApp() {
 
     fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${session.token}` } })
       .then(r => r.json())
-      .then(({ sessionData, radarScores: rs }) => {
+      .then(({ sessionData, radarScores: rs, coachGates: cg }) => {
         if (rs) setRadarScores(rs);
+        if (cg) setCoachGates(cg);
         if (sessionData && sessionData.userName) applyData(sessionData);
       })
       .catch(() => {})
@@ -378,7 +383,9 @@ export default function SelfAnalysisApp() {
       if (document.visibilityState !== 'visible' || !tokenRef.current) return;
       fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${tokenRef.current}` } })
         .then(r => r.json())
-        .then(({ sessionData }) => {
+        .then(({ sessionData, coachGates: cg }) => {
+          // コーチが解放/セッションを開けた場合に反映（タブに戻ったとき）
+          if (cg) setCoachGates(cg);
           if (!sessionData?.sessions) return;
           setData(prev => {
             if (!prev) return prev;
@@ -431,11 +438,12 @@ export default function SelfAnalysisApp() {
     setWorkFeedback(null); setWorkFeedbackAnswer('');
     setView('session-select');
 
-    // unlock状態をサーバーから再取得（コーチが解放した場合に反映）
+    // 解放ゲートをサーバーから再取得（コーチが解放/セッションを開いた場合に反映）
     if (tokenRef.current) {
       fetch('/api/db/load', { headers: { 'Authorization': `Bearer ${tokenRef.current}` } })
         .then(r => r.json())
-        .then(({ sessionData }) => {
+        .then(({ sessionData, coachGates: cg }) => {
+          if (cg) setCoachGates(cg);
           if (!sessionData?.sessions) return;
           setData(prev => {
             if (!prev) return prev;
@@ -569,9 +577,8 @@ export default function SelfAnalysisApp() {
           setFollowUp('');
           setFollowupDepth(0);
           if (fu === '十分です') await showReflect(saved);
-          if (followupIsLastRef.current) {
-            await runCompleteSession(activeId, session.answers, { ...(session.conversations || {}), [key]: thread }, data);
-          }
+          // 最後の質問でも自動でカードを生成しない。
+          // 自己分析シートの表示はコーチが解放するまで待つ（session.unlocked / coach_gates.cardReleased）。
         }
       } catch {
         setSaveStatus('error');
@@ -631,7 +638,7 @@ export default function SelfAnalysisApp() {
           setFollowUp('');
           setFollowupDepth(0);
           if (fu === '十分です') await showReflect(saved);
-          if (isLast) await runCompleteSession(activeId, newAnswers, session.conversations || {}, data);
+          // 最後の質問でも自動でカードを生成しない（コーチの表示解放を待つ）。
         }
       } catch {
         setSaveStatus('error');
@@ -867,8 +874,8 @@ export default function SelfAnalysisApp() {
               {SESSIONS.map(cfg => {
                 const id = cfg.id;
                 const session = data.sessions?.[String(id)] || defaultSession();
-                const prevSession = data.sessions?.[String(id - 1)];
-                const locked = id !== 1 && !(prevSession?.status === 'completed' && prevSession?.workSubmitted);
+                // セッションを開く権利はコーチが握る（session1 は常に開く）。
+                const locked = !isSessionOpen(coachGates, id);
                 const info = statusInfo(session);
                 const totalQ = getTotalQ(cfg);
                 const answeredQ = Object.keys(session.answers).length;
@@ -1037,7 +1044,7 @@ export default function SelfAnalysisApp() {
               <div style={{ padding: '40px 0' }}>
                 {isSummarizing ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: C.dim }}><span style={{ color: C.gold }}>·</span><span style={{ fontSize: '13px' }}>カードを作っています...</span></div>
-                ) : session.unlocked ? (
+                ) : isCardReleased(coachGates, activeId) ? (
                   <button onClick={handleNext} style={goldBtn(true)}>カードを生成する</button>
                 ) : (
                   <div style={{ textAlign: 'center' }}>
