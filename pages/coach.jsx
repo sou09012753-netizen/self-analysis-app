@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { answerWithFollowups } from '../lib/followups';
+import { countActiveQuestions, visibleQuestions } from '../lib/retiredQuestions';
 import { normalizeScores, extractReasons } from '../lib/radar';
 import { isSessionOpen, isCardReleased } from '../lib/gates';
 import RadarPentagon from '../components/RadarPentagon';
@@ -70,6 +71,7 @@ const renderMd = (text) => {
 const SESSIONS_MAP = {
   1: { title: '今の自分を解剖する', phases: [
     { title: 'モヤモヤの輪郭を取る', questions: ['最近、「このままでいいんだろうか」と心がざわついたり、モヤモヤした場面を、一つだけ思い出して書いてください。いつ、どこで、何をしていた時でしたか。正解はありません。','そのモヤモヤは、「自分自身への疑い」から来ていますか。それとも「周りや環境への不満・比較」から来ていますか。','そのモヤモヤが完全に消えたとして、あなたは「何ができるようになる」と思いますか。','Q1で出てきたモヤモヤの中で、一番「考えたくない」「直視したくない」と感じるものはどれですか。'] },
+    // 先頭の「ありがとう」は出題停止済み。過去の回答を正しいラベルで表示するために残す。
     { title: '過去から現在を読む', questions: ['親に「ありがとう」と直接言ったことはありますか。','子どもの頃、「本気でやめたいのに続けたこと」はありますか。','これまでの人生で「続けられると思っていたのにやめたこと」は何ですか。'] },
     { title: '承認と動機の核心', questions: ['誰かに褒められた時と、自分で「できた」と感じた時、どちらの満足感が長く続きますか。','一生誰にも見せられない、評価されない条件でも、今やっていることを続けますか。'] },
   ]},
@@ -443,7 +445,7 @@ export default function CoachPage() {
 
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
-        qa: phase.questions.map((q, qi) => ({ question: q, answer: answerWithFollowups(sess, `${pi}-${qi}`) })),
+        qa: visibleQuestions(sessionId, pi, phase, sess?.answers).map(({ q, key }) => ({ question: q, answer: answerWithFollowups(sess, key) })),
       }));
 
       const previousSummaries = [];
@@ -1016,7 +1018,7 @@ ${body}
               const sess = clientData.sessions?.[sid];
               if (!cfg) return null;
               const answers = sess?.answers || {};
-              const totalQ = cfg.phases.reduce((s, p) => s + p.questions.length, 0);
+              const totalQ = countActiveQuestions(sid, cfg.phases);
               const answeredQ = Object.keys(answers).length;
               if (answeredQ === 0) return null;
               const isOpen = allAnswersOpen[sid];

@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { answerWithFollowups, getPendingFollowup } from '../lib/followups';
 import { normalizeScores } from '../lib/radar';
 import { isSessionOpen, isCardReleased } from '../lib/gates';
+import { isRetired, countActiveQuestions, visibleQuestions } from '../lib/retiredQuestions';
 // ★RadarScoreList（数値表示）は絶対に import しない。本人には数値を見せない。
 import RadarPentagon from './RadarPentagon';
 
@@ -44,6 +45,8 @@ export const SESSIONS = [
       {
         title: '過去から現在を読む',
         questions: [
+          // 2026-09 出題停止。既存18人の回答キー（1-0）を保つため配列からは消さず、
+          // lib/retiredQuestions.js で出題対象からのみ除外している。
           '親に「ありがとう」と直接言ったことはありますか。言えたか、言えなかったか。言えなかったとしたら、なぜですか。',
           '子どもの頃、「本気でやめたいのに続けたこと」はありますか。その時、自分を動かしていたのは何でしたか。例）習い事、部活、家族の期待など',
           'これまでの人生で「続けられると思っていたのにやめたこと」は何ですか。やめた瞬間、自分に何と言い訳しましたか。正直に。',
@@ -132,19 +135,23 @@ const NEXT_PREVIEW = {
   },
 };
 
-const getTotalQ = (cfg) => cfg.phases.reduce((a, p) => a + p.questions.length, 0);
+const getTotalQ = (cfg) => countActiveQuestions(cfg.id, cfg.phases);
 
 const getNextQ = (session, cfg) => {
   for (let pi = 0; pi < cfg.phases.length; pi++) {
-    for (let qi = 0; qi < cfg.phases[pi].questions.length; qi++) {
+    // 出題停止した質問は飛ばす。番号・総数もその質問を除いて数える。
+    const active = cfg.phases[pi].questions
+      .map((q, qi) => ({ q, qi }))
+      .filter(({ qi }) => !isRetired(cfg.id, pi, qi));
+    for (const [n, { q, qi }] of active.entries()) {
       if (!session.answers[`${pi}-${qi}`]) {
         return {
           phaseIdx: pi, qIdx: qi,
           phase: cfg.phases[pi],
-          question: cfg.phases[pi].questions[qi],
-          qNum: qi + 1,
-          phaseTotal: cfg.phases[pi].questions.length,
-          isLast: pi === cfg.phases.length - 1 && qi === cfg.phases[pi].questions.length - 1,
+          question: q,
+          qNum: n + 1,
+          phaseTotal: active.length,
+          isLast: pi === cfg.phases.length - 1 && n === active.length - 1,
         };
       }
     }
@@ -686,9 +693,9 @@ export default function SelfAnalysisApp() {
       const cfg = SESSIONS[sessionId - 1];
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
-        qa: phase.questions.map((q, qi) => ({
+        qa: visibleQuestions(cfg.id, pi, phase, answers).map(({ q, key }) => ({
           question: q,
-          answer: answerWithFollowups({ answers, conversations }, `${pi}-${qi}`),
+          answer: answerWithFollowups({ answers, conversations }, key),
         })),
       }));
       const previousSummaries = [];
@@ -727,7 +734,7 @@ export default function SelfAnalysisApp() {
       const allSessionData = SESSIONS.map((cfg, idx) => {
         const id = idx + 1;
         const s = data.sessions[String(id)];
-        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: phase.questions.map((q, qi) => ({ question: q, answer: answerWithFollowups(s, `${pi}-${qi}`) })) })) };
+        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: visibleQuestions(cfg.id, pi, phase, s?.answers).map(({ q, key }) => ({ question: q, answer: answerWithFollowups(s, key) })) })) };
       });
       const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData }, tokenRef.current);
       saveData(prev => ({ ...prev, integratedDoc: doc }));
@@ -751,7 +758,7 @@ export default function SelfAnalysisApp() {
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
     let t = `${bar}\nSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
-    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
     return t;
@@ -765,7 +772,7 @@ export default function SelfAnalysisApp() {
     SESSIONS.forEach((cfg, idx) => {
       const id = idx + 1; const session = data.sessions[String(id)];
       t += `■ SESSION ${id}「${cfg.title}」\n\n`;
-      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; phase.questions.forEach((q, qi) => { const k = `${pi}-${qi}`; t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
       t += '\n';
     });
     return t;
