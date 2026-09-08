@@ -189,6 +189,14 @@ const ghostBtn = (extra = {}) => ({
   cursor: 'pointer', fontFamily: C.font, ...extra,
 });
 
+// 箇条書きや本文中の **太字** をそのまま出さずに強調表示する
+const inlineBold = (text) => {
+  if (!text || !text.includes('**')) return text;
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i} style={{ color: C.text, fontWeight: '600' }}>{part}</strong> : part
+  );
+};
+
 const renderMd = (text) => {
   if (!text) return null;
   return text.split('\n').map((line, i) => {
@@ -204,11 +212,18 @@ const renderMd = (text) => {
       </div>
     );
     if (line.startsWith('# ')) return <h2 key={i} style={{ color: C.text, fontSize: '20px', fontWeight: '300', margin: '0 0 28px', letterSpacing: '0.02em' }}>{line.slice(2)}</h2>;
-    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '6px 0 6px 14px', lineHeight: '1.9' }}>{line}</p>;
+    if (line.match(/^\d+\.\s/))  return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '6px 0 6px 14px', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
+    // ぶら下げの箇条書き（先頭に空白がある行）は一段下げて小さく出す
+    if (line.match(/^\s+- /)) return (
+      <div key={i} style={{ display: 'flex', gap: '8px', margin: '4px 0 4px 26px', alignItems: 'flex-start' }}>
+        <span style={{ color: C.border2, flexShrink: 0, marginTop: '4px', fontSize: '12px', lineHeight: 1 }}>–</span>
+        <p style={{ color: C.dim, fontSize: '13px', margin: 0, lineHeight: '1.8' }}>{inlineBold(line.trim().slice(2))}</p>
+      </div>
+    );
     if (line.startsWith('- '))   return (
       <div key={i} style={{ display: 'flex', gap: '10px', margin: '6px 0', alignItems: 'flex-start' }}>
         <span style={{ color: C.gold, flexShrink: 0, marginTop: '3px', fontSize: '16px', lineHeight: 1 }}>·</span>
-        <p style={{ color: '#d0ccc4', fontSize: '14px', margin: 0, lineHeight: '1.9' }}>{line.slice(2)}</p>
+        <p style={{ color: '#d0ccc4', fontSize: '14px', margin: 0, lineHeight: '1.9' }}>{inlineBold(line.slice(2))}</p>
       </div>
     );
     if (line.match(/^\*\*(.+?):\*\*\s*(.*)/)) {
@@ -217,7 +232,7 @@ const renderMd = (text) => {
     }
     if (line === '---') return <div key={i} style={{ height: '1px', background: `linear-gradient(to right, ${C.gold}44, transparent)`, margin: '28px 0' }} />;
     if (!line.trim())  return <div key={i} style={{ height: '8px' }} />;
-    return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '5px 0', lineHeight: '1.9' }}>{line}</p>;
+    return <p key={i} style={{ color: '#d0ccc4', fontSize: '14px', margin: '5px 0', lineHeight: '1.9' }}>{inlineBold(line)}</p>;
   });
 };
 
@@ -760,14 +775,14 @@ export default function SelfAnalysisApp() {
     let t = `${bar}\nSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
     cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
-    t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
+    t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・').replace(/\*\*/g, '');
     return t;
   };
 
   const buildFinalText = () => {
     const bar = '━'.repeat(48);
     let t = `${bar}\nSEN\n${data.userName} 分身ドキュメント  /  ${new Date().toLocaleDateString('ja-JP')}\n${bar}\n\n`;
-    t += (data.integratedDoc || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・');
+    t += (data.integratedDoc || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・').replace(/\*\*/g, '');
     t += `\n\n\n${bar}\n■ 全セッション回答データ\n${bar}\n\n`;
     SESSIONS.forEach((cfg, idx) => {
       const id = idx + 1; const session = data.sessions[String(id)];
@@ -1258,6 +1273,8 @@ export default function SelfAnalysisApp() {
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button onClick={() => navigator.clipboard?.writeText(doc)} style={goldBtn(true)}>コピーする</button>
                   <button onClick={() => downloadText(`${data.userName}_分身ドキュメント_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.txt`, buildFinalText())} style={ghostBtn()}>ダウンロード</button>
+                  {/* 生成は一度きりだと、失敗した時も内容が薄い時もやり直せない */}
+                  <button onClick={handleGenerate} style={ghostBtn()}>作り直す</button>
                   <button onClick={goToSessionSelect} style={ghostBtn()}>← セッション選択へ</button>
                 </div>
               </>
