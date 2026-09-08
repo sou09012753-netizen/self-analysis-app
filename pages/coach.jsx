@@ -612,12 +612,11 @@ ${body}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
             <div>
               <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.3em', margin: 0 }}>COACH MODE — クライアント選択</p>
-              {maxClients != null && (
-                <p style={{ color: isFull ? C.red : C.dim, fontSize: '11px', margin: '5px 0 0' }}>
-                  {clients.length} / {maxClients} 人
-                  {isFull ? '　（上限に達しています）' : `　残り ${maxClients - clients.length} 人`}
-                </p>
-              )}
+              <p style={{ color: isFull ? C.red : C.dim, fontSize: '11px', margin: '5px 0 0' }}>
+                {maxClients == null
+                  ? `${clients.length} 人`
+                  : `${clients.length} / ${maxClients} 人${isFull ? '　（上限に達しています）' : `　残り ${maxClients - clients.length} 人`}`}
+              </p>
             </div>
             <button
               onClick={() => { if (isFull) return; setShowCreateClient(true); setCreateClientError(''); setCreateClientSuccess(''); }}

@@ -16,8 +16,8 @@ export default async function handler(req, res) {
 
   const supabase = getSupabase();
 
-  // 復元は枠を1つ消費する。create-client と同じ上限で弾く。
-  if (restore) {
+  // 復元は枠を1つ消費する。create-client と同じ上限で弾く（無制限なら素通り）。
+  if (restore && MAX_CLIENTS_PER_COACH != null) {
     const { count, error: countError } = await supabase
       .from('coaching_users')
       .select('id', { count: 'exact', head: true })

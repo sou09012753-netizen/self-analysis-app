@@ -17,17 +17,20 @@ export default async function handler(req, res) {
   const supabase = getSupabase();
 
   // 登録上限チェック。アーカイブ済みは数えない。
+  // MAX_CLIENTS_PER_COACH が null のときは無制限なので、カウント自体を打たない。
   // Auth ユーザーを作る前に判定する（後で弾くと Auth 側に孤児が残るため）
-  const { count, error: countError } = await supabase
-    .from('coaching_users')
-    .select('id', { count: 'exact', head: true })
-    .eq('coach_id', coach.id)
-    .is('archived_at', null);
-  if (countError) return res.status(500).json({ error: countError.message });
-  if (count >= MAX_CLIENTS_PER_COACH) {
-    return res.status(409).json({
-      error: `クライアント登録は${MAX_CLIENTS_PER_COACH}人までです。不要なクライアントをアーカイブしてください。`,
-    });
+  if (MAX_CLIENTS_PER_COACH != null) {
+    const { count, error: countError } = await supabase
+      .from('coaching_users')
+      .select('id', { count: 'exact', head: true })
+      .eq('coach_id', coach.id)
+      .is('archived_at', null);
+    if (countError) return res.status(500).json({ error: countError.message });
+    if (count >= MAX_CLIENTS_PER_COACH) {
+      return res.status(409).json({
+        error: `クライアント登録は${MAX_CLIENTS_PER_COACH}人までです。不要なクライアントをアーカイブしてください。`,
+      });
+    }
   }
 
   const { data, error } = await supabase.auth.admin.createUser({
