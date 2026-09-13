@@ -140,6 +140,7 @@ export default function CoachPage() {
 
   // Report states
   const [reportText, setReportText] = useState(null);
+  const [reportNoAnswers, setReportNoAnswers] = useState(false);
   const [reportOpen, setReportOpen] = useState(true);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportUpdatedAt, setReportUpdatedAt] = useState(null);
@@ -300,6 +301,14 @@ export default function CoachPage() {
         }
         return;
       }
+      // 回答が1件もないと、AIは「回答データが添付されていない」という文章を返し、それが保存されて残る。
+      // 回答が出揃う前に開いただけで空レポートが固定されないよう、生成しない。
+      const answerCount = Object.values(sessionData?.sessions || {})
+        .reduce((n, s) => n + Object.values(s?.answers || {}).filter(a => String(a || '').trim()).length, 0);
+      if (answerCount === 0) {
+        if (selectedClientRef.current?.id === clientId) { setReportText(''); setReportNoAnswers(true); }
+        return;
+      }
       await doGenerateReport(clientId, userName, sessionData, workResponses);
     } catch {
       if (selectedClientRef.current?.id === clientId) setReportText('');
@@ -314,6 +323,7 @@ export default function CoachPage() {
     setClientWorkResponses([]);
     setReportText(null);
     setReportUpdatedAt(null);
+    setReportNoAnswers(false);
     setSessionQuestions(null);
     setQuestionsUpdatedAt(null);
     setPhase('session');
@@ -342,7 +352,7 @@ export default function CoachPage() {
   const handleBack = () => {
     selectedClientRef.current = null;
     setSelectedClient(null); setClientData(null);
-    setReportText(null); setReportUpdatedAt(null); setClientWorkResponses([]);
+    setReportText(null); setReportUpdatedAt(null); setReportNoAnswers(false); setClientWorkResponses([]);
     setSessionQuestions(null); setQuestionsUpdatedAt(null);
     setUnlockingSession(null);
     setGeneratingCard(null);
@@ -900,7 +910,11 @@ ${body}
                       <span style={{ fontSize: '13px' }}>レポートを生成しています（30〜60秒かかります）...</span>
                     </div>
                   )}
-                  {!isGeneratingReport && reportText === '' && <p style={{ color: C.dim, fontSize: '13px' }}>レポートを生成できませんでした。再生成を試してください。</p>}
+                  {!isGeneratingReport && reportText === '' && (
+                    <p style={{ color: C.dim, fontSize: '13px' }}>
+                      {reportNoAnswers ? 'まだ回答がないため、レポートは作成していません。回答が入ってから開き直すと作成されます。' : 'レポートを生成できませんでした。再生成を試してください。'}
+                    </p>
+                  )}
                   {!isGeneratingReport && reportText && <div>{renderMd(reportText)}</div>}
                 </div>
               )}
