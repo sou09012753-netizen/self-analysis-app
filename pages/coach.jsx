@@ -804,8 +804,8 @@ ${body}
                   {[1, 2, 3].map(id => {
                     const sess = clientData.sessions?.[id] || {};
                     const cfg = SESSIONS_MAP[id];
-                    let totalQ = 0;
-                    if (cfg) cfg.phases.forEach(p => totalQ += p.questions.length);
+                    // 出題停止した質問は分母に含めない（含めると8/9のまま全問記入済みにならず、シート操作が出ない）
+                    const totalQ = cfg ? countActiveQuestions(id, cfg.phases) : 0;
                     const answeredQ = Object.keys(sess.answers || {}).length;
                     const allAnswered = totalQ > 0 && answeredQ >= totalQ;
                     const completed = sess.status === 'completed';

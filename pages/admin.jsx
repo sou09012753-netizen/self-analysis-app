@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { SESSIONS } from '../components/SelfAnalysisApp';
+import { countActiveQuestions } from '../lib/retiredQuestions';
 
 
 
@@ -582,7 +583,7 @@ export default function AdminPage() {
                       const session = sd?.sessions?.[String(cfg.id)];
                       const sesKey = `${u.id}-${cfg.id}`;
                       const isSesExpanded = expandedSession === sesKey;
-                      const totalQ = cfg.phases.reduce((a, p) => a + p.questions.length, 0);
+                      const totalQ = countActiveQuestions(cfg.id, cfg.phases);
                       const answeredQ = Object.keys(session?.answers ?? {}).length;
                       const info = statusLabel(session?.status ?? 'not_started');
 
