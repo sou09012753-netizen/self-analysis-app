@@ -141,6 +141,38 @@ const renderMd = (text) => {
   });
 };
 
+// SESSION 3 の問い4（SESSION 1・2で書きながら手が止まった問いはどれか）は、本人の過去回答を見ながら答える。
+// その回答欄の上にだけ、SESSION 1・2 の回答を保存時の質問文つきで出す。
+const PAST_ANSWERS_AT = { sessionId: 3, key: '2-0' };
+
+const PastAnswers = ({ sessions }) => {
+  const blocks = SESSIONS.filter(cfg => cfg.id < PAST_ANSWERS_AT.sessionId).map(cfg => {
+    const s = sessions?.[String(cfg.id)];
+    const items = cfg.phases.flatMap((phase, pi) =>
+      visibleQuestions(cfg.id, pi, phase, s?.answers)
+        .filter(({ key }) => String(s?.answers?.[key] || '').trim())
+        .map(({ q, key }) => ({ key, question: questionTextFor(s, key, q), answer: s.answers[key] })));
+    return { cfg, items };
+  }).filter(b => b.items.length);
+  if (!blocks.length) return null;
+  return (
+    <div style={{ background: '#0d0d0d', border: `1px solid ${C.border2}`, borderRadius: '8px', padding: '16px 20px', marginBottom: '20px', maxHeight: '360px', overflowY: 'auto' }}>
+      <p style={{ color: C.gold, fontSize: '10px', letterSpacing: '0.2em', margin: '0 0 12px' }}>SESSION 1・2 のあなたの回答</p>
+      {blocks.map(({ cfg, items }) => (
+        <div key={cfg.id} style={{ marginBottom: '16px' }}>
+          <p style={{ color: C.dim, fontSize: '10px', letterSpacing: '0.15em', margin: '0 0 10px' }}>SESSION {cfg.id} · {cfg.title}</p>
+          {items.map(({ key, question, answer }) => (
+            <div key={key} style={{ marginBottom: '12px', paddingLeft: '10px', borderLeft: `1px solid ${C.border2}` }}>
+              <p style={{ color: C.dim, fontSize: '11px', lineHeight: '1.7', margin: '0 0 4px' }}>{question}</p>
+              <p style={{ color: C.muted, fontSize: '13px', lineHeight: '1.8', margin: 0, whiteSpace: 'pre-wrap' }}>{answer}</p>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // 401検出用。コンポーネントがマウント時に登録する
 let onSessionExpired = null;
 
@@ -958,6 +990,9 @@ export default function SelfAnalysisApp() {
                         <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.6', marginBottom: '12px' }}>その言葉の奥にあるものを知りたいので、もう少し聞かせてください。</p>
                         <p style={{ color: '#ccc', fontSize: '15px', lineHeight: '1.75' }}>{followUp}</p>
                       </div>
+                    )}
+                    {activeId === PAST_ANSWERS_AT.sessionId && (followUp ? followupKeyRef.current : current && `${current.phaseIdx}-${current.qIdx}`) === PAST_ANSWERS_AT.key && (
+                      <PastAnswers sessions={data.sessions} />
                     )}
                     <textarea value={answer} onChange={e => setAnswer(e.target.value)} placeholder={followUp ? '続けて書いてください...' : '正直に、思ったままを書いてください...'} rows={followUp ? 4 : 6} style={{ width: '100%', padding: '18px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', color: C.text, fontSize: '15px', lineHeight: '1.8', resize: 'vertical', outline: 'none', boxSizing: 'border-box', fontFamily: C.font, marginBottom: '8px' }} />
                     {!followUp && !isFollowingUp && (
