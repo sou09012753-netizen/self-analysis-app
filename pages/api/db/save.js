@@ -1,6 +1,5 @@
 import { getSupabase } from '../../../lib/supabase';
 import { mergeQuestionTexts, fillMissingQuestionTexts } from '../../../lib/questionTexts';
-import { SESSIONS } from '../../../lib/sessions';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
             const prevQT = existingSessions[sid]?.questionTexts;
             const merged = prevQT ? { ...s, questionTexts: mergeQuestionTexts(prevQT, s?.questionTexts) } : s;
             // 質問文を送ってこない古い画面から保存された回答にも、問いの記録を残す（当時の文面かは不明扱い）
-            return [sid, fillMissingQuestionTexts(SESSIONS.find(c => String(c.id) === String(sid)), merged).session];
+            return [sid, fillMissingQuestionTexts(sid, merged).session];
           })),
         }
       : sessionData;

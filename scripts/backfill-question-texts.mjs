@@ -3,7 +3,7 @@
 //   node scripts/backfill-question-texts.mjs          … dry-run（何も書かない。対象件数だけ出す）
 //   node scripts/backfill-question-texts.mjs --apply  … 書き込む
 //
-// session_data.sessions[sid].questionTexts[key] = { text: <現在の質問マスタ>, isBackfilled: true, savedAt: null }
+// session_data.sessions[sid].questionTexts[key] = { text: <リニューアル前の質問文>, isBackfilled: true, savedAt: null }
 //
 // 守ること：
 //   - answers / conversations / insights / summary には触らない。questionTexts を足すだけ
@@ -13,13 +13,13 @@
 //     （ずれていたらスキップして報告。再実行すれば拾える）
 //   - 書き込み後に読み直し、回答件数が増減していないことを検証する
 //
-// ※ 必ず STEP 4（質問マスタ差し替え）より前に実行すること。後だと新しい文面が入ってしまう。
+// 文面は lib/legacyQuestions.js（リニューアル前の固定コピー）から入れるので、
+// 質問マスタの差し替えより後に実行しても新しい文面は入らない。
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { SESSIONS } from '../lib/sessions.js';
 import { fillMissingQuestionTexts } from '../lib/questionTexts.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -60,8 +60,7 @@ for (const row of rows) {
 
   let filledHere = 0;
   const sessions = Object.fromEntries(Object.entries(sd.sessions).map(([sid, s]) => {
-    const cfg = SESSIONS.find(c => String(c.id) === String(sid));
-    const { session, filled } = fillMissingQuestionTexts(cfg, s);
+    const { session, filled } = fillMissingQuestionTexts(sid, s);
     filledHere += filled.length;
     return [sid, session];
   }));
