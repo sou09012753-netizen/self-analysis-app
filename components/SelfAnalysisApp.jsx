@@ -486,6 +486,7 @@ export default function SelfAnalysisApp() {
           : '';
         const fu = await callAPI({
           type: 'followup',
+          sessionNumber: activeId,
           question,
           answer: saved,
           conversationHistory: prevThread,
@@ -545,6 +546,7 @@ export default function SelfAnalysisApp() {
             ? { type: 'reframe', question: current.question, answer: saved }
             : {
                 type: 'followup',
+                sessionNumber: activeId,
                 question: current.question,
                 answer: saved,
                 conversationHistory: [],

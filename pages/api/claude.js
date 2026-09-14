@@ -27,6 +27,19 @@ const authenticate = async (req) => {
   return null;
 };
 
+// SESSION 1 の深掘りだけに足すルール。結論を先に置く問いを出すと、この段階では本人が守りに入る。
+// 決めつけ・解釈を含む問いは SESSION 2 以降でのみ許可する（SESSION 2・3 のプロンプトは変えない）。
+const SESSION1_FOLLOWUP_RULES = `■ SESSION 1 の追加ルール（上の「対応」「角度」「禁止」より優先する）
+- 問いは、本人の言葉を「」でそのまま引用し、その場面・時刻・登場人物を聞くものに限る（角度は A 事実特定のみ。B〜E は使わない）
+  良い例：「『置いていかれる』と感じたのは、何曜日の何時ごろ、誰といたときですか？」
+- 解釈・仮説・言い換えを提示しない。本人が書いていない結論を問いの中に置かない
+- 「つまり〜ですね」「〜に近くないですか」「本当は〜なのでは」「〜ということですか」の形を出さない
+  悪い例：「それはもう『負け』ではなく『選んでいる』に近くないですか？」
+- 矛盾・言い訳・回避を指摘しない（それは SESSION 2 以降で扱う）
+- 引用の前に「〇〇という言葉が出ましたが」などの定型の導入は付けない
+
+`;
+
 const stripFences = (s) => s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
 
 const callClaude = async (system, messages, maxTokens) => {
@@ -57,7 +70,7 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'followup') {
-      const { question, answer, conversationHistory = [], depth = 0, previousContext = '', maxDepth = 3 } = req.body;
+      const { question, answer, conversationHistory = [], depth = 0, previousContext = '', maxDepth = 3, sessionNumber } = req.body;
       if (depth >= maxDepth) return res.json({ text: '十分です' });
       const contextBlock = previousContext ? `\n【前セッションの文脈（必要に応じて引用してよい）】\n${previousContext}\n` : '';
       const system = `あなたは世界最高峰のコーチです。${contextBlock}
@@ -94,7 +107,7 @@ E 回避を炙る：答えを避けている構造そのものを突く
 - 必ず1文
 - 相手を断定で責めない。突くのは「構造」であって人格ではない（「〜ですよね」ではなく「〜に気づいていますか？」「〜はどちらですか？」の問いの形で核心に踏み込む）
 
-必ず以下のJSON形式のみで返す。他のテキストは一切含めない。
+${Number(sessionNumber) === 1 ? SESSION1_FOLLOWUP_RULES : ''}必ず以下のJSON形式のみで返す。他のテキストは一切含めない。
 {"score": N, "reply": "深掘り質問 or 十分です"}`;
       const messages = conversationHistory.length > 0
         ? [...conversationHistory, { role: 'user', content: answer }]
