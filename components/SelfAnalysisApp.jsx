@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import { answerWithFollowups, getPendingFollowup } from '../lib/followups';
+import { answerWithFollowups, getPendingFollowup, followupMaxDepth } from '../lib/followups';
 import { normalizeScores } from '../lib/radar';
 import { isSessionOpen, isCardReleased } from '../lib/gates';
 import { isRetired, countActiveQuestions, visibleQuestions } from '../lib/retiredQuestions';
@@ -491,7 +491,7 @@ export default function SelfAnalysisApp() {
           conversationHistory: prevThread,
           depth: followupDepth,
           previousContext,
-          maxDepth: activeId === 1 ? 1 : 3,
+          maxDepth: followupMaxDepth(activeId, session.answers?.[key]),
         }, tokenRef.current);
         if (fu && fu !== '十分です') {
           const nextThread = [...thread, { role: 'assistant', content: fu }];
@@ -550,7 +550,7 @@ export default function SelfAnalysisApp() {
                 conversationHistory: [],
                 depth: 0,
                 previousContext,
-                maxDepth: activeId === 1 ? 1 : 3,
+                maxDepth: followupMaxDepth(activeId, saved),
               },
           tokenRef.current
         );
