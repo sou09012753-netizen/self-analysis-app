@@ -3,6 +3,9 @@
 //   node scripts/backfill-question-texts.mjs          … dry-run（何も書かない。対象件数だけ出す）
 //   node scripts/backfill-question-texts.mjs --apply  … 書き込む
 //
+//   --only=<user_id>  その1人だけを対象にする（段階実行用。まずアーカイブ済みの1人で試す）
+//   --show            入れる質問文をキーごとに表示する
+//
 // session_data.sessions[sid].questionTexts[key] = { text: <リニューアル前の質問文>, isBackfilled: true, savedAt: null }
 //
 // 守ること：
@@ -34,6 +37,8 @@ for (const line of readFileSync(join(root, '.env.local'), 'utf8').split('\n')) {
 }
 
 const apply = process.argv.includes('--apply');
+const show = process.argv.includes('--show');
+const only = process.argv.find(a => a.startsWith('--only='))?.split('=')[1];
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 const countAnswers = (sd) => Object.values(sd?.sessions || {})
@@ -41,8 +46,10 @@ const countAnswers = (sd) => Object.values(sd?.sessions || {})
 
 const { data: rows, error } = await supabase
   .from('coaching_users')
-  .select('id, user_name, updated_at, session_data');
+  .select('id, user_name, archived_at, updated_at, session_data')
+  .match(only ? { id: only } : {});
 if (error) throw error;
+if (only && rows.length !== 1) throw new Error(`--only=${only} に一致する行がありません`);
 
 if (apply) {
   mkdirSync(join(root, 'backup'), { recursive: true });
@@ -62,11 +69,12 @@ for (const row of rows) {
   const sessions = Object.fromEntries(Object.entries(sd.sessions).map(([sid, s]) => {
     const { session, filled } = fillMissingQuestionTexts(sid, s);
     filledHere += filled.length;
+    if (show) for (const k of filled) console.log(`    S${sid} ${k}  ${session.questionTexts[k].text.slice(0, 40)}…`);
     return [sid, session];
   }));
   if (filledHere === 0) continue;
   totalFilled += filledHere;
-  console.log(`${row.user_name.padEnd(14)} 回答${before}件 / 質問文を入れる ${filledHere}件`);
+  console.log(`${row.user_name.padEnd(14)} ${row.archived_at ? '[アーカイブ]' : '            '} ${row.id}  回答${before}件 / 質問文を入れる ${filledHere}件`);
   if (!apply) continue;
 
   const next = { ...sd, sessions };
