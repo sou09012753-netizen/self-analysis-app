@@ -6,6 +6,8 @@ import { isSessionOpen, isCardReleased } from '../lib/gates';
 import { isRetired, countActiveQuestions, visibleQuestions } from '../lib/retiredQuestions';
 // ★RadarScoreList（数値表示）は絶対に import しない。本人には数値を見せない。
 import RadarPentagon from './RadarPentagon';
+import { SESSIONS } from '../lib/sessions';
+import { questionTextFor, questionForAI, newQuestionText } from '../lib/questionTexts';
 
 const DRAFT_KEY = 'coaching_sen_draft';
 const SESSION_KEY = 'coaching_sen_token';
@@ -25,104 +27,7 @@ const getValidSession = () => {
   } catch { return null; }
 };
 
-export const SESSIONS = [
-  {
-    id: 1,
-    title: '今の自分を解剖する',
-    subtitle: '現在地を正直に見る',
-    cardName: 'あなたの「動き出す理由」カード',
-    goal: '自分が何を大切にしているか、何に引っかかりを感じているかを言語化します。正解はありません。思ったままを書いてください。',
-    phases: [
-      {
-        title: 'モヤモヤの輪郭を取る',
-        questions: [
-          '最近、「このままでいいんだろうか」と心がざわついたり、モヤモヤした場面を、一つだけ思い出して書いてください。いつ、どこで、何をしていた時でしたか。正解はありません。',
-          'そのモヤモヤは、「自分自身への疑い」から来ていますか。それとも「周りや環境への不満・比較」から来ていますか。どちらが強いか、直感で答えてください。',
-          'そのモヤモヤが完全に消えたとして、あなたは「何ができるようになる」と思いますか。それとも「何者かになれる」と思いますか。',
-          'ここまでで触れたことの中で、一番「考えたくない」「直視したくない」と感じるのはどれですか。それはなぜだと思いますか。',
-        ],
-      },
-      {
-        title: '過去から現在を読む',
-        questions: [
-          // 2026-09 出題停止。既存18人の回答キー（1-0）を保つため配列からは消さず、
-          // lib/retiredQuestions.js で出題対象からのみ除外している。
-          '親に「ありがとう」と直接言ったことはありますか。言えたか、言えなかったか。言えなかったとしたら、なぜですか。',
-          '子どもの頃、「本気でやめたいのに続けたこと」はありますか。その時、自分を動かしていたのは何でしたか。例）習い事、部活、家族の期待など',
-          'これまでの人生で「続けられると思っていたのにやめたこと」は何ですか。やめた瞬間、自分に何と言い訳しましたか。正直に。',
-        ],
-      },
-      {
-        title: '承認と動機の核心',
-        questions: [
-          '誰かに褒められた時と、自分で「できた」と感じた時、どちらの満足感が長く続きますか。どちらが強いか正直に。',
-          '一生誰にも見せられない、評価されない条件でも、今やっていることを続けますか。続けないとしたら、それは何を意味すると思いますか。',
-        ],
-      },
-    ],
-  },
-  {
-    id: 2,
-    title: '止まっている理由を特定する',
-    subtitle: '動けない本当の理由を見つける',
-    cardName: 'あなたの「動き方のクセ」カード',
-    goal: '同じパターンを繰り返してしまう理由を掘り下げます。なぜ動けないのか、本音で向き合ってください。',
-    phases: [
-      {
-        title: '本音の孤立',
-        questions: [
-          '今、自分が本当にやろうとしていることを、全部正直に話せる人間が何人いますか。具体的な人数で答えてください。',
-          'その人たちにも話せていないことがあるとしたら、なぜですか。「否定されるから」以外の理由で考えてみてください。',
-        ],
-      },
-      {
-        title: '回避パターン',
-        questions: [
-          '何かから逃げた後、必ずやることがあります。それは何ですか。例）走る、寝る、スマホを見る、食べる、掃除する',
-          'その行動をしている時、何を感じていますか。逃げた罪悪感ですか、一時的な安堵ですか、それとも別の何かですか。',
-          '今、一番先送りにしていることは何ですか。なぜ今日やらないのか、本当の理由を正直に書いてください。',
-        ],
-      },
-      {
-        title: '矛盾を直視する',
-        questions: [
-          '「〇〇したい」と思っているのに、実際の行動が伴っていないことはありますか。その矛盾に気づいていますか。何が邪魔していると思いますか。',
-          'これまでの人生で、今も「逃げた」と後悔している選択が一つあるとしたら、それは何ですか。',
-        ],
-      },
-    ],
-  },
-  {
-    id: 3,
-    title: '次の一手を決める',
-    subtitle: 'ビジョンではなく、今週の行動まで落とす',
-    cardName: 'あなたの「自分軸」カード',
-    goal: '3回のセッションで見えてきたことを使って、本物の自分軸を言語化します。ビジョンではなく、今週動ける一手まで落としてください。',
-    phases: [
-      {
-        title: '死ぬ前の後悔',
-        questions: [
-          '80歳で死ぬ直前、「あの時こうしておけばよかった」と後悔するとしたら、それは何ですか。お金・地位以外で答えてください。',
-        ],
-      },
-      {
-        title: '本物の動機',
-        questions: [
-          '今一番熱量がある「やりたいこと」の、本当の理由は何ですか。誰かに認められたいのか、自分が満たされたいのか、誰かを守りたいのか。正直に。',
-          'もしその「やりたいこと」が永遠に誰にも評価されないとわかっていても、やり続けますか。やめるとしたら、それはなぜですか。',
-        ],
-      },
-      {
-        title: '軸を言語化する',
-        questions: [
-          'SESSION 1から今日まで、一番「そうだった」と腑に落ちた瞬間はいつですか。その時何に気づきましたか。',
-          'あなたが死ぬ時に、自分の人生を一文で表すとしたら、何と書きますか。',
-          '今週、必ずやると決めることを一つだけ書いてください。いつやるか、やらなかった時の言い訳も一緒に書いてください。',
-        ],
-      },
-    ],
-  },
-];
+export { SESSIONS };
 
 const NEXT_PREVIEW = {
   2: {
@@ -325,7 +230,8 @@ export default function SelfAnalysisApp() {
       return;
     }
     followupKeyRef.current = pending.key;
-    followupQuestionRef.current = pending.question;
+    // 深掘り中の問いは、回答時に保存した質問文で復元する（マスタが変わっていても当時の問いのまま）
+    followupQuestionRef.current = questionForAI(session, pending.key, pending.question);
     followupIsLastRef.current = Object.keys(session.answers || {}).length >= getTotalQ(cfg);
     conversationHistoryRef.current = pending.history;
     setFollowupDepth(pending.depth);
@@ -617,7 +523,9 @@ export default function SelfAnalysisApp() {
       const newAnswers = { ...session.answers, [key]: saved };
       const isLast = Object.keys(newAnswers).length >= getTotalQ(cfg);
       const newInsights = { ...(session.insights || {}), [key]: insight.trim() };
-      patchSession(activeId, { answers: newAnswers, insights: newInsights });
+      // そのとき画面に出していた質問文を回答と一緒に保存する（lib/questionTexts.js）
+      const newQuestionTexts = { ...(session.questionTexts || {}), [key]: newQuestionText(current.question) };
+      patchSession(activeId, { answers: newAnswers, insights: newInsights, questionTexts: newQuestionTexts });
       setInsight('');
       followupKeyRef.current = key;
       followupQuestionRef.current = current.question;
@@ -709,7 +617,7 @@ export default function SelfAnalysisApp() {
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
         qa: visibleQuestions(cfg.id, pi, phase, answers).map(({ q, key }) => ({
-          question: q,
+          question: questionForAI(currentData.sessions[String(sessionId)], key, q),
           answer: answerWithFollowups({ answers, conversations }, key),
         })),
       }));
@@ -749,7 +657,7 @@ export default function SelfAnalysisApp() {
       const allSessionData = SESSIONS.map((cfg, idx) => {
         const id = idx + 1;
         const s = data.sessions[String(id)];
-        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: visibleQuestions(cfg.id, pi, phase, s?.answers).map(({ q, key }) => ({ question: q, answer: answerWithFollowups(s, key) })) })) };
+        return { sessionNumber: id, title: cfg.title, cardName: cfg.cardName, summary: s.summary, answers: cfg.phases.map((phase, pi) => ({ phase: phase.title, qa: visibleQuestions(cfg.id, pi, phase, s?.answers).map(({ q, key }) => ({ question: questionForAI(s, key, q), answer: answerWithFollowups(s, key) })) })) };
       });
       const doc = await callAPI({ type: 'generate', userName: data.userName, allSessionData }, tokenRef.current);
       saveData(prev => ({ ...prev, integratedDoc: doc }));
@@ -773,7 +681,7 @@ export default function SelfAnalysisApp() {
     const date = session.completedAt ? new Date(session.completedAt).toLocaleDateString('ja-JP') : new Date().toLocaleDateString('ja-JP');
     const bar = '━'.repeat(48);
     let t = `${bar}\nSEN 自己分析プログラム\nSESSION ${sid}「${cfg.title}」\n${data.userName}  /  ${date}\n${bar}\n\n■ 回答データ\n\n`;
-    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+    cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${questionTextFor(session, k, q)}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
     t += `\n${bar}\n■ ${cfg.cardName}\n${bar}\n\n`;
     t += (session.summary || '').replace(/^#{1,4} /gm, '■ ').replace(/^- /gm, '・').replace(/\*\*/g, '');
     return t;
@@ -787,7 +695,7 @@ export default function SelfAnalysisApp() {
     SESSIONS.forEach((cfg, idx) => {
       const id = idx + 1; const session = data.sessions[String(id)];
       t += `■ SESSION ${id}「${cfg.title}」\n\n`;
-      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${q}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
+      cfg.phases.forEach((phase, pi) => { t += `▶ ${phase.title}\n\n`; visibleQuestions(cfg.id, pi, phase, session?.answers).forEach(({ q, key: k }) => { t += `Q: ${questionTextFor(session, k, q)}\nA: ${answerWithFollowups(session, k, '（未回答）')}\n`; if (session.insights?.[k]) t += `気づき: ${session.insights[k]}\n`; t += '\n'; }); });
       t += '\n';
     });
     return t;

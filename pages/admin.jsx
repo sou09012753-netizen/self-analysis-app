@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { SESSIONS } from '../components/SelfAnalysisApp';
+import { SESSIONS } from '../lib/sessions';
+import { questionTextFor } from '../lib/questionTexts';
 import { countActiveQuestions } from '../lib/retiredQuestions';
 
 
@@ -27,7 +28,7 @@ const buildUserCSV = (userName, sd) => {
     cfg.phases.forEach((phase, pi) => {
       phase.questions.forEach((q, qi) => {
         rows.push([
-          userName, `SESSION ${cfg.id}`, cfg.title, phase.title, `${pi + 1}-${qi + 1}`, q,
+          userName, `SESSION ${cfg.id}`, cfg.title, phase.title, `${pi + 1}-${qi + 1}`, questionTextFor(session, `${pi}-${qi}`, q),
           session.answers?.[`${pi}-${qi}`] ?? '',
           session.completedAt ? new Date(session.completedAt).toLocaleString('ja-JP') : '',
         ]);
@@ -48,7 +49,7 @@ const buildAllUsersCSV = (users) => {
       cfg.phases.forEach((phase, pi) => {
         phase.questions.forEach((q, qi) => {
           rows.push([
-            u.user_name, `SESSION ${cfg.id}`, cfg.title, phase.title, `${pi + 1}-${qi + 1}`, q,
+            u.user_name, `SESSION ${cfg.id}`, cfg.title, phase.title, `${pi + 1}-${qi + 1}`, questionTextFor(session, `${pi}-${qi}`, q),
             session.answers?.[`${pi}-${qi}`] ?? '',
             session.completedAt ? new Date(session.completedAt).toLocaleString('ja-JP') : '',
           ]);
@@ -620,7 +621,7 @@ export default function AdminPage() {
                                       <div key={qi} style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid #161616' }}>
                                         <p style={{ color: C.muted, fontSize: '12px', lineHeight: '1.7', marginBottom: '6px' }}>
                                           <span style={{ color: C.dim, fontSize: '10px', marginRight: '8px' }}>Q{pi + 1}-{qi + 1}</span>
-                                          {q}
+                                          {questionTextFor(session, `${pi}-${qi}`, q)}
                                         </p>
                                         <p style={{ color: ans ? C.text : '#2a2a2a', fontSize: '13px', lineHeight: '1.8', margin: 0, whiteSpace: 'pre-wrap' }}>
                                           {ans || '（未回答）'}

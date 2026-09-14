@@ -1,6 +1,7 @@
 import { getSupabase } from '../../lib/supabase';
 import { validateCoachPasscode } from '../../lib/coachAuth';
 import { answerWithFollowups } from '../../lib/followups';
+import { questionForAI } from '../../lib/questionTexts';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-6';
@@ -514,7 +515,7 @@ reason の悪い例：「自己肯定感が低く、他人の評価に依存し�
           for (const [qi, q] of phase.questions.entries()) {
             const key = `${pi}-${qi}`;
             if (!sess.answers[key]) continue;
-            content += `Q: ${q}\nA: ${answerWithFollowups(sess, key)}\n\n`;
+            content += `Q: ${questionForAI(sess, key, q)}\nA: ${answerWithFollowups(sess, key)}\n\n`;
           }
         }
         if (sess.summary) content += `【セッションまとめ（AI生成）】\n${sess.summary}\n\n`;
@@ -645,7 +646,7 @@ reason の悪い例：「自己肯定感が低く、他人の評価に依存し�
           for (const [qi, q] of phase.questions.entries()) {
             const key = `${pi}-${qi}`;
             if (!sess.answers[key]) continue;
-            content += `Q: ${q}\nA: ${answerWithFollowups(sess, key)}\n\n`;
+            content += `Q: ${questionForAI(sess, key, q)}\nA: ${answerWithFollowups(sess, key)}\n\n`;
           }
         }
         if (sess.summary) content += `【セッションまとめ】\n${sess.summary}\n\n`;

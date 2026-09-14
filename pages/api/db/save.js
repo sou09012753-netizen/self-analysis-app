@@ -1,4 +1,6 @@
 import { getSupabase } from '../../../lib/supabase';
+import { mergeQuestionTexts, fillMissingQuestionTexts } from '../../../lib/questionTexts';
+import { SESSIONS } from '../../../lib/sessions';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
@@ -16,7 +18,7 @@ export default async function handler(req, res) {
 
     const { data: existing } = await supabase
       .from('coaching_users')
-      .select('id')
+      .select('id, session_data')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -24,10 +26,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'coachId is required for initial save' });
     }
 
+    // 回答保存時点の質問文（questionTexts）は、DBにあるものを必ず残す。
+    // 本人のアプリは session_data を丸ごと送ってくるので、バックフィル前に開いていた画面の
+    // 古い blob がそのまま来ても、既存の質問文が消えたり書き換わったりしないようにする。
+    const existingSessions = existing?.session_data?.sessions || {};
+    const mergedData = sessionData?.sessions
+      ? {
+          ...sessionData,
+          sessions: Object.fromEntries(Object.entries(sessionData.sessions).map(([sid, s]) => {
+            const prevQT = existingSessions[sid]?.questionTexts;
+            const merged = prevQT ? { ...s, questionTexts: mergeQuestionTexts(prevQT, s?.questionTexts) } : s;
+            // 質問文を送ってこない古い画面から保存された回答にも、問いの記録を残す（当時の文面かは不明扱い）
+            return [sid, fillMissingQuestionTexts(SESSIONS.find(c => String(c.id) === String(sid)), merged).session];
+          })),
+        }
+      : sessionData;
+
     const payload = {
       id: user.id,
       user_name: userName,
-      session_data: sessionData,
+      session_data: mergedData,
       updated_at: new Date().toISOString(),
     };
     if (coachId) payload.coach_id = coachId;

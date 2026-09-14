@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { getSupabaseClient } from '../lib/supabaseClient';
 import { answerWithFollowups } from '../lib/followups';
+import { questionTextFor, questionForAI } from '../lib/questionTexts';
 import { countActiveQuestions, visibleQuestions } from '../lib/retiredQuestions';
 import { normalizeScores, extractReasons } from '../lib/radar';
 import { isSessionOpen, isCardReleased } from '../lib/gates';
@@ -97,7 +98,7 @@ const getLatestAnswerEntry = (sessionData) => {
     for (const [key, ans] of Object.entries(sess.answers)) {
       if (!ans) continue;
       const [pi, qi] = key.split('-').map(Number);
-      const question = sessionCfg.phases[pi]?.questions[qi] || '';
+      const question = questionTextFor(sess, key, sessionCfg.phases[pi]?.questions[qi] || '');
       if (!latest || key > latest.key) {
         latest = { sessionId: Number(sid), key, question, answer: ans };
       }
@@ -455,7 +456,7 @@ export default function CoachPage() {
 
       const allAnswers = cfg.phases.map((phase, pi) => ({
         phase: phase.title,
-        qa: visibleQuestions(sessionId, pi, phase, sess?.answers).map(({ q, key }) => ({ question: q, answer: answerWithFollowups(sess, key) })),
+        qa: visibleQuestions(sessionId, pi, phase, sess?.answers).map(({ q, key }) => ({ question: questionForAI(sess, key, q), answer: answerWithFollowups(sess, key) })),
       }));
 
       const previousSummaries = [];
@@ -1066,7 +1067,7 @@ ${body}
                               const thread = sess?.conversations?.[qKey]?.slice(1) || [];
                               return (
                                 <div key={q} style={{ marginBottom: '24px', paddingLeft: '10px', borderLeft: `1px solid ${C.border}` }}>
-                                  <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.7', marginBottom: '6px' }}>{q}</p>
+                                  <p style={{ color: C.muted, fontSize: '11px', lineHeight: '1.7', marginBottom: '6px' }}>{questionTextFor(sess, qKey, q)}</p>
                                   <p style={{ color: '#d4d0c8', fontSize: '13px', lineHeight: '1.9', margin: thread.length ? '0 0 12px' : 0 }}>{a}</p>
                                   {thread.length > 0 && (
                                     <div style={{ paddingLeft: '12px', borderLeft: `1px solid ${C.gold}33` }}>
