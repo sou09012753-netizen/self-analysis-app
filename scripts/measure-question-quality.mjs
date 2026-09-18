@@ -52,7 +52,9 @@ const BASELINE = {
   3: { shallow: 73.3, chars: 35.0 },
   all: { shallow: 68.1, chars: 32.1 },
 };
+// 2026-09-18 社内決定：判定日は 10/31、集まった分で測る。浅さが主・文字数は従（浅さが48%以下なら成功）。
 const TARGET = { shallow: 48, chars: 50 };
+const JUDGE_DATE = '2026-10-31';
 
 // テスト用・体験セッションの行（user_name で判定）
 const TEST_CLIENT = /テスト|テスちゃん|体験|そら君|^sou$/;
@@ -137,14 +139,14 @@ const all = summarize(buckets);
 sessionRows.push({ セッション: '全体', ...all, 'ベースライン 浅い%': BASELINE.all.shallow, 'ベースライン 文字数': BASELINE.all.chars });
 console.table(sessionRows);
 
-console.log(`■ 目標：全体の浅い割合 ${TARGET.shallow}% 以下 / 初回文字数 ${TARGET.chars}字 以上`);
+console.log(`■ 判定（${JUDGE_DATE}）：浅い割合 ${TARGET.shallow}% 以下なら成功。文字数 ${TARGET.chars}字 は参考（未達でも問いは変えない）`);
 const s1Users = summarize(buckets.filter(b => b.sid === 1)).人数;
 if (all.回答数) {
   const okShallow = all['浅い割合%'] <= TARGET.shallow;
   const okChars = all['文字数 問ごと中央値の平均'] >= TARGET.chars;
-  console.log(`  浅い割合 ${all['浅い割合%']}% → ${okShallow ? '達成' : '未達'}　/　文字数 ${all['文字数 問ごと中央値の平均']}字（問ごと中央値の平均） → ${okChars ? '達成' : '未達'}`);
+  console.log(`  浅い割合 ${all['浅い割合%']}% → ${okShallow ? '成功' : '未達'}（主）　/　文字数 ${all['文字数 問ごと中央値の平均']}字 → ${okChars ? '達成' : '未達'}（従・参考）`);
 }
-console.log(`  判定の目安：新規受講生 6〜8人が SESSION 1 を終えた時点（現在 SESSION 1 に回答した人：${s1Users}人）\n`);
+console.log(`  判定日 ${JUDGE_DATE} に、集まった分で測る（現在 SESSION 1 に回答した人：${s1Users}人。6人未満なら参考値として扱う）\n`);
 
 if (process.argv.includes('--csv')) {
   const head = ['質問', '回答数', '人数', '文字数_問ごと中央値の平均', '初回文字数_中央値', '初回文字数_平均', '浅い割合%', '深掘り往復_平均', '文面'];
