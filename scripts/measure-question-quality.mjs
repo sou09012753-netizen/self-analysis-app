@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 import { SESSIONS } from '../lib/sessions.js';
 import { isRetired } from '../lib/retiredQuestions.js';
-import { SHORT_ANSWER_CHARS } from '../lib/followups.js';
+import { isShallowAnswer } from '../lib/followups.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 for (const line of readFileSync(join(root, '.env.local'), 'utf8').split('\n')) {
@@ -59,9 +59,8 @@ const JUDGE_DATE = '2026-10-31';
 // テスト用・体験セッションの行（user_name で判定）
 const TEST_CLIENT = /テスト|テスちゃん|体験|そら君|^sou$/;
 
-const DONT_KNOW = /わからない|分からない|わかりません|分かりません|わからん|特にない|特に無い|特になし|とくにない/;
 const len = (s) => [...String(s || '').trim()].length;
-const isShallow = (s) => len(s) < SHORT_ANSWER_CHARS || DONT_KNOW.test(String(s || ''));
+const isShallow = isShallowAnswer;
 const followupRounds = (thread) => Array.isArray(thread) ? thread.slice(1).filter(m => m.role === 'user').length : 0;
 const medianOf = (xs) => {
   if (!xs.length) return null;

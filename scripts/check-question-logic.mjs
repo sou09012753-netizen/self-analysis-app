@@ -20,6 +20,9 @@ ok('S1 39字 → 上限2回', followupMaxDepth(1, 'あ'.repeat(39)) === 2);
 ok('S2 は常に3回', followupMaxDepth(2, short) === 3 && followupMaxDepth(2, long) === 3);
 ok('S3 は常に3回', followupMaxDepth(3, short) === 3);
 ok('しきい値は40字', SHORT_ANSWER_CHARS === 40);
+ok('S1 40字以上でも「わからない」を含めば → 上限2回', followupMaxDepth(1, 'あ'.repeat(40) + 'わからない') === 2);
+ok('S1 40字以上で「特にない」を含めば → 上限2回', followupMaxDepth(1, '特にないです。' + 'あ'.repeat(40)) === 2);
+ok('S1 前後の空白・改行は数えない', followupMaxDepth(1, '\n  ' + 'あ'.repeat(39) + '  \n') === 2);
 
 // サーバー側の打ち切り（claude.js の実装を読む）
 const api = readFileSync(new URL('../pages/api/claude.js', import.meta.url),'utf8');
