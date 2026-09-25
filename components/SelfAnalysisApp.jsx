@@ -176,6 +176,13 @@ const PastAnswers = ({ sessions }) => {
 // 401検出用。コンポーネントがマウント時に登録する
 let onSessionExpired = null;
 
+// 時間切れなどで Vercel が JSON 以外（"An error occurred..."）を返したときに、読めるエラーにする
+const readJSON = async (res) => {
+  const body = await res.text();
+  try { return JSON.parse(body); }
+  catch { throw new Error(res.status === 504 ? '生成に時間がかかりすぎました。もう一度お試しください' : `HTTP ${res.status}`); }
+};
+
 const callAPI = async (body, token) => {
   const res = await fetch('/api/claude', {
     method: 'POST',
@@ -186,7 +193,7 @@ const callAPI = async (body, token) => {
     onSessionExpired?.();
     throw new Error('SESSION_EXPIRED');
   }
-  const json = await res.json();
+  const json = await readJSON(res);
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json.text || '';
 };
@@ -202,7 +209,7 @@ const callSummaryAPI = async (body, token) => {
     onSessionExpired?.();
     throw new Error('SESSION_EXPIRED');
   }
-  const json = await res.json();
+  const json = await readJSON(res);
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return { text: json.text || '', scores: normalizeScores(json.scores) };
 };
